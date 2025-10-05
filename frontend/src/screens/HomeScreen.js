@@ -1,50 +1,147 @@
-import React from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
-  SafeAreaView
+  SafeAreaView,
+  Animated,
+  StatusBar
 } from 'react-native';
 import { useAuth } from '../context/AuthContext';
+import { useLocation } from '../context/LocationContext';
 
 export default function HomeScreen() {
   const { currentUser, userProfile, logout } = useAuth();
+  const { requestLocation, loading: locationLoading } = useLocation();
+  const [expanded, setExpanded] = useState(false);
 
-  const handleLogout = async () => {
-    await logout();
+  // Animation values
+  const logoPosition = useRef(new Animated.Value(0)).current;
+  const buttonsOpacity = useRef(new Animated.Value(0)).current;
+
+  const handleStartSearching = () => {
+    if (expanded) return; // Already expanded
+
+    setExpanded(true);
+
+    // Animate logo slide up and buttons fade in
+    Animated.parallel([
+      Animated.timing(logoPosition, {
+        toValue: 1,
+        duration: 350,
+        useNativeDriver: true,
+      }),
+      Animated.timing(buttonsOpacity, {
+        toValue: 1,
+        duration: 300,
+        delay: 150,
+        useNativeDriver: true,
+      }),
+    ]).start();
   };
+
+  const handleInvite = async () => {
+    const result = await requestLocation();
+    if (result.success) {
+      console.log('Location obtained:', result.location);
+      // TODO: S-401/S-402 - Create session and open invite modal
+      console.log('Next: Create session and show invite modal');
+    }
+  };
+
+  const handleStartBrowse = async () => {
+    const result = await requestLocation();
+    if (result.success) {
+      console.log('Location obtained:', result.location);
+      // TODO: S-501 - Fetch deck from Google Places API
+      console.log('Next: Fetch deck and navigate to swipe screen');
+    }
+  };
+
+  // Calculate logo position (center to top)
+  const logoTranslateY = logoPosition.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, -200], // Slide up 200px
+  });
 
   return (
     <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="light-content" />
+
+      {/* Header with username */}
+      <View style={styles.header}>
+        <Text style={styles.username}>
+          {userProfile?.display_name || 'User'}
+        </Text>
+        <TouchableOpacity onPress={logout} style={styles.logoutIcon}>
+          <Text style={styles.logoutText}>↪</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Main content area */}
       <View style={styles.content}>
-        <Text style={styles.title}>🌙 NightSwipe</Text>
-        <Text style={styles.subtitle}>Welcome to your Home Screen</Text>
+        {/* Logo with animation */}
+        <Animated.View
+          style={[
+            styles.logoContainer,
+            {
+              transform: [{ translateY: logoTranslateY }],
+            },
+          ]}
+        >
+          <View style={styles.logoGlow}>
+            <Text style={styles.logo}>🌙</Text>
+          </View>
+          <Text style={styles.appName}>NightSwipe</Text>
+        </Animated.View>
 
-        {userProfile && (
-          <View style={styles.profileCard}>
-            <Text style={styles.profileLabel}>Display Name:</Text>
-            <Text style={styles.profileValue}>{userProfile.display_name}</Text>
-
-            <Text style={styles.profileLabel}>Email:</Text>
-            <Text style={styles.profileValue}>{currentUser?.email}</Text>
-
-            {userProfile.phone && (
-              <>
-                <Text style={styles.profileLabel}>Phone:</Text>
-                <Text style={styles.profileValue}>{userProfile.phone}</Text>
-              </>
-            )}
+        {/* Initial CTA - Start Searching */}
+        {!expanded && (
+          <View style={styles.ctaContainer}>
+            <TouchableOpacity
+              style={styles.primaryButton}
+              onPress={handleStartSearching}
+            >
+              <Text style={styles.primaryButtonText}>Start Searching</Text>
+            </TouchableOpacity>
+            <Text style={styles.hint}>Find places to explore together</Text>
           </View>
         )}
 
-        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-          <Text style={styles.logoutButtonText}>Logout</Text>
-        </TouchableOpacity>
+        {/* Expanded buttons - Invite and Start Browse */}
+        {expanded && (
+          <Animated.View
+            style={[
+              styles.expandedButtons,
+              { opacity: buttonsOpacity },
+            ]}
+          >
+            <TouchableOpacity
+              style={[styles.secondaryButton, locationLoading && styles.buttonDisabled]}
+              onPress={handleInvite}
+              disabled={locationLoading}
+            >
+              <Text style={styles.secondaryButtonText}>
+                {locationLoading ? '📍 Getting Location...' : '📤 Invite Someone'}
+              </Text>
+            </TouchableOpacity>
 
-        <Text style={styles.comingSoon}>
-          Deck creation and matching features coming soon!
-        </Text>
+            <TouchableOpacity
+              style={[styles.primaryButton, locationLoading && styles.buttonDisabled]}
+              onPress={handleStartBrowse}
+              disabled={locationLoading}
+            >
+              <Text style={styles.primaryButtonText}>
+                {locationLoading ? 'Getting Location...' : 'Start Browse'}
+              </Text>
+            </TouchableOpacity>
+
+            <Text style={styles.expandedHint}>
+              Swipe together or invite a friend
+            </Text>
+          </Animated.View>
+        )}
       </View>
     </SafeAreaView>
   );
@@ -55,58 +152,116 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#0a0a0a',
   },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+  },
+  username: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  logoutIcon: {
+    padding: 8,
+  },
+  logoutText: {
+    fontSize: 24,
+    color: '#888',
+  },
   content: {
     flex: 1,
-    padding: 24,
     justifyContent: 'center',
     alignItems: 'center',
+    paddingHorizontal: 24,
   },
-  title: {
-    fontSize: 32,
+  logoContainer: {
+    alignItems: 'center',
+    marginBottom: 60,
+  },
+  logoGlow: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: '#1a1a2e',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#6200ee',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.6,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  logo: {
+    fontSize: 64,
+  },
+  appName: {
+    fontSize: 28,
     fontWeight: 'bold',
     color: '#fff',
-    marginBottom: 8,
+    marginTop: 16,
+    letterSpacing: 1,
   },
-  subtitle: {
-    fontSize: 16,
-    color: '#888',
-    marginBottom: 32,
-  },
-  profileCard: {
-    backgroundColor: '#1a1a1a',
-    borderRadius: 12,
-    padding: 20,
-    width: '100%',
-    marginBottom: 24,
-  },
-  profileLabel: {
-    fontSize: 12,
-    color: '#888',
-    marginTop: 12,
-    marginBottom: 4,
-  },
-  profileValue: {
-    fontSize: 16,
-    color: '#fff',
-    fontWeight: '500',
-  },
-  logoutButton: {
-    backgroundColor: '#ff4444',
-    borderRadius: 8,
-    padding: 16,
+  ctaContainer: {
     width: '100%',
     alignItems: 'center',
-    marginBottom: 20,
   },
-  logoutButtonText: {
+  primaryButton: {
+    backgroundColor: '#6200ee',
+    borderRadius: 12,
+    paddingVertical: 18,
+    paddingHorizontal: 48,
+    width: '100%',
+    maxWidth: 320,
+    alignItems: 'center',
+    shadowColor: '#6200ee',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  primaryButtonText: {
     color: '#fff',
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: 'bold',
   },
-  comingSoon: {
-    color: '#666',
+  secondaryButton: {
+    backgroundColor: '#1a1a2e',
+    borderWidth: 2,
+    borderColor: '#6200ee',
+    borderRadius: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 48,
+    width: '100%',
+    maxWidth: 320,
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  secondaryButtonText: {
+    color: '#6200ee',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  hint: {
+    color: '#888',
     fontSize: 14,
-    fontStyle: 'italic',
+    marginTop: 16,
     textAlign: 'center',
+  },
+  expandedButtons: {
+    width: '100%',
+    alignItems: 'center',
+  },
+  expandedHint: {
+    color: '#666',
+    fontSize: 13,
+    marginTop: 20,
+    textAlign: 'center',
+    fontStyle: 'italic',
+  },
+  buttonDisabled: {
+    opacity: 0.5,
   },
 });

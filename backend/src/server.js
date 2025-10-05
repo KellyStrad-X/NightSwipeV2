@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const { initializeFirebase } = require('./config/firebase');
 const { verifyFirebaseToken } = require('./middleware/auth');
+const sessionRoutes = require('./routes/session');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -30,7 +31,9 @@ app.get('/api/v1', (req, res) => {
     endpoints: {
       health: '/health',
       profile: '/api/v1/profile (protected)',
-      session: '/api/v1/session (coming soon)',
+      session_create: 'POST /api/v1/session (protected)',
+      session_join: 'POST /api/v1/session/:id/join (protected)',
+      session_get: 'GET /api/v1/session/:id (protected)',
       places: '/api/v1/places (coming soon)'
     }
   });
@@ -47,6 +50,9 @@ app.get('/api/v1/profile', verifyFirebaseToken, (req, res) => {
     }
   });
 });
+
+// Session routes
+app.use('/api/v1', sessionRoutes);
 
 // 404 handler
 app.use((req, res) => {
