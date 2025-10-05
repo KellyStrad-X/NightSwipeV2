@@ -1,9 +1,14 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const { initializeFirebase } = require('./config/firebase');
+const { verifyFirebaseToken } = require('./middleware/auth');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Initialize Firebase Admin SDK
+initializeFirebase();
 
 // Middleware
 app.use(cors());
@@ -24,8 +29,21 @@ app.get('/api/v1', (req, res) => {
     message: 'NightSwipe API v1',
     endpoints: {
       health: '/health',
+      profile: '/api/v1/profile (protected)',
       session: '/api/v1/session (coming soon)',
       places: '/api/v1/places (coming soon)'
+    }
+  });
+});
+
+// Protected route example - requires Firebase authentication
+app.get('/api/v1/profile', verifyFirebaseToken, (req, res) => {
+  res.json({
+    message: 'Protected profile endpoint',
+    user: {
+      uid: req.user.uid,
+      email: req.user.email,
+      emailVerified: req.user.emailVerified,
     }
   });
 });
