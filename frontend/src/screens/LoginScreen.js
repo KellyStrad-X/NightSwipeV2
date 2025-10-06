@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
   Alert
 } from 'react-native';
+import * as Linking from 'expo-linking';
 import { useAuth } from '../context/AuthContext';
 
 export default function LoginScreen({ navigation }) {
@@ -24,6 +25,14 @@ export default function LoginScreen({ navigation }) {
   const [errors, setErrors] = useState({});
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  // DEV ONLY: Test deep link functionality (unauthenticated flow)
+  const handleTestDeepLink = () => {
+    const testCode = 'TEST' + Math.floor(Math.random() * 1000);
+    const testUrl = `exp://192.168.1.1:8081/--/join?code=${testCode}`;
+    console.log('🧪 [DEV] Testing deep link (logged out) with code:', testCode);
+    Linking.openURL(testUrl);
+  };
 
   // Validation functions
   const validateEmail = (email) => {
@@ -110,8 +119,17 @@ export default function LoginScreen({ navigation }) {
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
       >
-        <Text style={styles.title}>Welcome Back</Text>
-        <Text style={styles.subtitle}>Sign in to continue</Text>
+        <View style={styles.titleContainer}>
+          <View>
+            <Text style={styles.title}>Welcome Back</Text>
+            <Text style={styles.subtitle}>Sign in to continue</Text>
+          </View>
+          {__DEV__ && (
+            <TouchableOpacity onPress={handleTestDeepLink} style={styles.devButton}>
+              <Text style={styles.devButtonText}>🧪 Test Join Link</Text>
+            </TouchableOpacity>
+          )}
+        </View>
 
         {/* Email Field */}
         <View style={styles.inputGroup}>
@@ -194,18 +212,32 @@ const styles = StyleSheet.create({
     padding: 24,
     justifyContent: 'center',
   },
+  titleContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 32,
+  },
+  devButton: {
+    backgroundColor: '#ff6b00',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 6,
+  },
+  devButtonText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '600',
+  },
   title: {
     fontSize: 32,
     fontWeight: 'bold',
     color: '#fff',
     marginBottom: 8,
-    textAlign: 'center',
   },
   subtitle: {
     fontSize: 16,
     color: '#888',
-    marginBottom: 32,
-    textAlign: 'center',
   },
   inputGroup: {
     marginBottom: 20,

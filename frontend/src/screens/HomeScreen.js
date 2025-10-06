@@ -8,6 +8,7 @@ import {
   Animated,
   StatusBar
 } from 'react-native';
+import * as Linking from 'expo-linking';
 import { useAuth } from '../context/AuthContext';
 import { useLocation } from '../context/LocationContext';
 
@@ -79,6 +80,14 @@ export default function HomeScreen() {
     }
   };
 
+  // DEV ONLY: Test deep link functionality
+  const handleTestDeepLink = () => {
+    const testCode = 'TEST' + Math.floor(Math.random() * 1000);
+    const testUrl = `exp://192.168.1.1:8081/--/join?code=${testCode}`;
+    console.log('🧪 [DEV] Testing deep link with code:', testCode);
+    Linking.openURL(testUrl);
+  };
+
   // Calculate logo position (center to top)
   const logoTranslateY = logoPosition.interpolate({
     inputRange: [0, 1],
@@ -94,9 +103,16 @@ export default function HomeScreen() {
         <Text style={styles.username}>
           {userProfile?.display_name || 'User'}
         </Text>
-        <TouchableOpacity onPress={logout} style={styles.logoutIcon}>
-          <Text style={styles.logoutText}>↪</Text>
-        </TouchableOpacity>
+        <View style={styles.headerButtons}>
+          {__DEV__ && (
+            <TouchableOpacity onPress={handleTestDeepLink} style={styles.devButton}>
+              <Text style={styles.devButtonText}>🧪 Test Link</Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity onPress={logout} style={styles.logoutIcon}>
+            <Text style={styles.logoutText}>↪</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Main content area */}
@@ -183,6 +199,22 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
     color: '#fff',
+  },
+  headerButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  devButton: {
+    backgroundColor: '#ff6b00',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+  devButtonText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
   },
   logoutIcon: {
     padding: 8,
