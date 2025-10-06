@@ -84,8 +84,8 @@ export default function HomeScreen({ navigation }) {
 
       // S-401/S-402: Create session
       const response = await api.post('/api/v1/session', {
-        host_lat: locationResult.location.latitude,
-        host_lng: locationResult.location.longitude
+        host_lat: locationResult.location.lat,
+        host_lng: locationResult.location.lng
       });
 
       console.log('✅ Session created:', response.data);
