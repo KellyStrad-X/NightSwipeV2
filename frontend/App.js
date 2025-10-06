@@ -36,6 +36,19 @@ function Navigation() {
   const { currentUser, loading, pendingJoinCode } = useAuth();
   const navigationRef = useRef();
 
+  // DEV HELPER: Expose deep link trigger to global scope for testing
+  // Usage in dev console: global.testDeepLink('TEST123')
+  useEffect(() => {
+    if (__DEV__) {
+      global.testDeepLink = (code) => {
+        const testUrl = `exp://192.168.1.1:8081/--/join?code=${code}`;
+        console.log('🧪 [DEV] Triggering test deep link:', testUrl);
+        handleDeepLink(testUrl);
+      };
+      console.log('🧪 [DEV] Deep link tester available: global.testDeepLink("YOUR_CODE")');
+    }
+  }, [currentUser]);
+
   // Handle deep links
   useEffect(() => {
     // Handle initial URL (app opened from cold start via link)
@@ -63,15 +76,51 @@ function Navigation() {
   /**
    * Handle deep link URLs
    * Extracts join code and routes user based on auth state
+   *
+   * Supports:
+   * - Production: nightswipe://join?code=ABC123
+   * - Production: https://nightswipe.app/join?code=ABC123
+   * - Expo Go Dev: exp://192.168.x.x:8081/--/join?code=ABC123
    */
   const handleDeepLink = async (url) => {
     try {
+      console.log('📱 Raw deep link URL:', url);
       const parsed = Linking.parse(url);
       console.log('📱 Parsed deep link:', parsed);
 
+      let path = parsed.path;
+      let queryParams = parsed.queryParams || {};
+
+      // EXPO GO FIX: Handle exp:// scheme URLs
+      // In Expo Go, URLs look like: exp://192.168.x.x:8081/--/join?code=ABC123
+      // The path comes as '--/join' or just the full URL needs manual parsing
+      if (parsed.scheme === 'exp' || url.includes('exp://')) {
+        console.log('🔧 Detected Expo Go URL - applying custom parsing');
+
+        // Extract path after --/ prefix
+        const expPathMatch = url.match(/--\/([^?]+)/);
+        if (expPathMatch) {
+          path = expPathMatch[1];
+          console.log('🔧 Extracted path from Expo Go URL:', path);
+        }
+
+        // Extract query params manually
+        const queryMatch = url.match(/\?(.+)$/);
+        if (queryMatch) {
+          const queryString = queryMatch[1];
+          const params = {};
+          queryString.split('&').forEach(param => {
+            const [key, value] = param.split('=');
+            params[key] = decodeURIComponent(value);
+          });
+          queryParams = params;
+          console.log('🔧 Extracted query params from Expo Go URL:', queryParams);
+        }
+      }
+
       // Check if this is a join link
-      if (parsed.path === 'join' && parsed.queryParams?.code) {
-        const joinCode = parsed.queryParams.code;
+      if (path === 'join' && queryParams?.code) {
+        const joinCode = queryParams.code;
         console.log('📱 Join code extracted:', joinCode);
 
         if (!currentUser) {
@@ -95,6 +144,8 @@ function Navigation() {
             [{ text: 'OK' }]
           );
         }
+      } else {
+        console.log('ℹ️ Deep link did not match join pattern:', { path, queryParams });
       }
       // Handle other deep link paths here (e.g., /home, /profile, etc.)
     } catch (error) {
