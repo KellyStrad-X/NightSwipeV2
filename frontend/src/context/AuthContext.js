@@ -7,7 +7,9 @@ import {
 } from 'firebase/auth';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
 import * as SecureStore from 'expo-secure-store';
+import { Alert } from 'react-native';
 import { auth, db } from '../config/firebase';
+import { getPendingJoinCode } from '../utils/deepLinkStorage';
 
 const AuthContext = createContext();
 
@@ -23,6 +25,38 @@ export const AuthProvider = ({ children }) => {
   const [currentUser, setCurrentUser] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [pendingJoinCode, setPendingJoinCode] = useState(null);
+
+  /**
+   * Check for pending join code after successful authentication
+   * Alerts user if a join code is waiting
+   */
+  const checkPendingJoinCode = async () => {
+    try {
+      const joinCode = await getPendingJoinCode();
+      if (joinCode) {
+        console.log('✅ Found pending join code after auth:', joinCode);
+        setPendingJoinCode(joinCode);
+
+        // Alert user that they can now join the session
+        Alert.alert(
+          'Join Session',
+          `You can now join the session with code: ${joinCode}\n\n(Navigation to lobby coming in Sprint 03)`,
+          [
+            {
+              text: 'OK',
+              onPress: () => {
+                // In Sprint 03, this will navigate to the lobby screen
+                console.log('User acknowledged pending join code:', joinCode);
+              },
+            },
+          ]
+        );
+      }
+    } catch (error) {
+      console.error('Error checking pending join code:', error);
+    }
+  };
 
   /**
    * Safely fetch user profile from Firestore with offline fallback
@@ -132,6 +166,9 @@ export const AuthProvider = ({ children }) => {
       setUserProfile(profileData);
       setCurrentUser(user);
 
+      // 5. Check for pending join code (S-203: deep link flow)
+      await checkPendingJoinCode();
+
       return { success: true, user };
     } catch (error) {
       console.error('Registration error:', error);
@@ -170,6 +207,10 @@ export const AuthProvider = ({ children }) => {
       }
 
       setCurrentUser(user);
+
+      // Check for pending join code (S-203: deep link flow)
+      await checkPendingJoinCode();
+
       return { success: true, user };
     } catch (error) {
       // Only treat auth errors as login failures
@@ -202,6 +243,7 @@ export const AuthProvider = ({ children }) => {
       await SecureStore.deleteItemAsync('userToken');
       setCurrentUser(null);
       setUserProfile(null);
+      setPendingJoinCode(null);
       return { success: true };
     } catch (error) {
       console.error('Logout error:', error);
@@ -213,6 +255,7 @@ export const AuthProvider = ({ children }) => {
     currentUser,
     userProfile,
     loading,
+    pendingJoinCode,
     register,
     login,
     logout,

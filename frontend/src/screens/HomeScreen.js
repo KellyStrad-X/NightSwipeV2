@@ -11,6 +11,17 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { useLocation } from '../context/LocationContext';
 
+/**
+ * HomeScreen - Main authenticated home screen
+ *
+ * Features:
+ * - S-301: Animated logo and CTAs based on user state
+ * - S-302: Location permission integration
+ * - S-203: Auth gate for invite actions (this screen is auth-only)
+ *
+ * Note: This screen is only accessible to authenticated users.
+ * Deep link handling for guest joins is in App.js
+ */
 export default function HomeScreen() {
   const { currentUser, userProfile, logout } = useAuth();
   const { requestLocation, loading: locationLoading } = useLocation();
@@ -42,6 +53,15 @@ export default function HomeScreen() {
   };
 
   const handleInvite = async () => {
+    // S-203: Auth gate - verify user is authenticated before invite
+    if (!currentUser) {
+      console.warn('[TELEMETRY] Unauthorized invite attempt - user not authenticated');
+      alert('Please log in to invite others to a session.');
+      return;
+    }
+
+    console.log('[TELEMETRY] Invite action initiated by user:', currentUser.uid);
+
     const result = await requestLocation();
     if (result.success) {
       console.log('Location obtained:', result.location);
