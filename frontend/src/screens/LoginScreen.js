@@ -11,8 +11,8 @@ import {
   ActivityIndicator,
   Alert
 } from 'react-native';
-import * as Linking from 'expo-linking';
 import { useAuth } from '../context/AuthContext';
+import { testDeepLinkFlow } from '../utils/testDeepLink';
 
 export default function LoginScreen({ navigation }) {
   const { login } = useAuth();
@@ -27,11 +27,9 @@ export default function LoginScreen({ navigation }) {
   const [loading, setLoading] = useState(false);
 
   // DEV ONLY: Test deep link functionality (unauthenticated flow)
-  const handleTestDeepLink = () => {
+  const handleTestDeepLink = async () => {
     const testCode = 'TEST' + Math.floor(Math.random() * 1000);
-    const testUrl = `exp://192.168.1.1:8081/--/join?code=${testCode}`;
-    console.log('🧪 [DEV] Testing deep link (logged out) with code:', testCode);
-    Linking.openURL(testUrl);
+    await testDeepLinkFlow(testCode, false); // Always test unauthenticated flow from login screen
   };
 
   // Validation functions

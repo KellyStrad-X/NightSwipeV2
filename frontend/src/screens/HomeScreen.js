@@ -8,9 +8,9 @@ import {
   Animated,
   StatusBar
 } from 'react-native';
-import * as Linking from 'expo-linking';
 import { useAuth } from '../context/AuthContext';
 import { useLocation } from '../context/LocationContext';
+import { testDeepLinkFlow } from '../utils/testDeepLink';
 
 /**
  * HomeScreen - Main authenticated home screen
@@ -81,11 +81,9 @@ export default function HomeScreen() {
   };
 
   // DEV ONLY: Test deep link functionality
-  const handleTestDeepLink = () => {
+  const handleTestDeepLink = async () => {
     const testCode = 'TEST' + Math.floor(Math.random() * 1000);
-    const testUrl = `exp://192.168.1.1:8081/--/join?code=${testCode}`;
-    console.log('🧪 [DEV] Testing deep link with code:', testCode);
-    Linking.openURL(testUrl);
+    await testDeepLinkFlow(testCode, !!currentUser);
   };
 
   // Calculate logo position (center to top)
