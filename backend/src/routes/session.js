@@ -97,6 +97,57 @@ router.post('/session', verifyFirebaseToken, async (req, res) => {
 });
 
 /**
+ * GET /session/by-code/:joinCode
+ * Look up session by join code (for guest deep link flow)
+ *
+ * Response (200):
+ * {
+ *   "session_id": string,
+ *   "join_code": string,
+ *   "status": string,
+ *   "host": { id, display_name }
+ * }
+ */
+router.get('/session/by-code/:joinCode', verifyFirebaseToken, async (req, res) => {
+  try {
+    const { joinCode } = req.params;
+
+    const db = getDb();
+    const sessionsRef = db.collection('sessions');
+    const querySnapshot = await sessionsRef.where('join_code', '==', joinCode).limit(1).get();
+
+    if (querySnapshot.empty) {
+      return res.status(404).json({
+        error: 'Session not found',
+        message: 'No session found with this join code'
+      });
+    }
+
+    const sessionDoc = querySnapshot.docs[0];
+    const sessionData = sessionDoc.data();
+
+    // Fetch host profile
+    const hostProfile = await db.collection('users').doc(sessionData.host_id).get();
+
+    res.status(200).json({
+      session_id: sessionDoc.id,
+      join_code: sessionData.join_code,
+      status: sessionData.status,
+      host: {
+        id: sessionData.host_id,
+        display_name: hostProfile.data()?.display_name || 'Unknown'
+      }
+    });
+  } catch (error) {
+    console.error('Error looking up session by code:', error);
+    res.status(500).json({
+      error: 'Failed to lookup session',
+      message: error.message
+    });
+  }
+});
+
+/**
  * POST /session/:id/join
  * Join an existing session
  *

@@ -10,7 +10,9 @@ import { LocationProvider } from './src/context/LocationContext';
 import LoginScreen from './src/screens/LoginScreen';
 import RegisterScreen from './src/screens/RegisterScreen';
 import HomeScreen from './src/screens/HomeScreen';
+import LobbyScreen from './src/screens/LobbyScreen';
 import { storePendingJoinCode } from './src/utils/deepLinkStorage';
+import api from './src/services/api';
 
 const Stack = createNativeStackNavigator();
 
@@ -48,6 +50,52 @@ function Navigation() {
       console.log('🧪 [DEV] Deep link tester available: global.testDeepLink("YOUR_CODE")');
     }
   }, [currentUser]);
+
+  // Handle pending join code after authentication (S-402: auto-join flow)
+  useEffect(() => {
+    const handlePendingJoin = async () => {
+      if (currentUser && pendingJoinCode) {
+        console.log('🚀 Auto-joining session after auth:', pendingJoinCode);
+
+        try {
+          // Look up session by join code
+          const lookupResponse = await api.get(`/session/by-code/${pendingJoinCode}`);
+          const sessionId = lookupResponse.data.session_id;
+          console.log('📍 Session found:', sessionId);
+
+          // Join the session
+          const joinResponse = await api.post(`/session/${sessionId}/join`, {
+            join_code: pendingJoinCode
+          });
+          console.log('✅ Successfully joined session:', joinResponse.data);
+
+          // Clear pending join code
+          // (Note: getPendingJoinCode already removes it from storage)
+
+          // Navigate to lobby as guest
+          if (navigationRef.current) {
+            navigationRef.current.navigate('Lobby', {
+              sessionId: sessionId,
+              role: 'guest'
+            });
+          }
+        } catch (error) {
+          console.error('❌ Failed to auto-join session:', error);
+
+          let errorMessage = 'Failed to join session. Please try again.';
+          if (error.response?.status === 404) {
+            errorMessage = 'This session no longer exists.';
+          } else if (error.response?.status === 400) {
+            errorMessage = error.response.data.message || 'Unable to join this session.';
+          }
+
+          Alert.alert('Join Failed', errorMessage, [{ text: 'OK' }]);
+        }
+      }
+    };
+
+    handlePendingJoin();
+  }, [currentUser, pendingJoinCode]);
 
   // Handle deep links
   useEffect(() => {
@@ -134,15 +182,40 @@ function Navigation() {
             [{ text: 'OK' }]
           );
         } else {
-          // User authenticated - navigate to session (for now, just log it)
-          // In Sprint 03, this will navigate to the lobby screen
-          console.log('✅ User authenticated - ready to join session:', joinCode);
+          // User authenticated - join session and navigate to lobby
+          console.log('✅ User authenticated - joining session:', joinCode);
 
-          Alert.alert(
-            'Join Session',
-            `Ready to join session with code: ${joinCode}\n\n(Lobby screen coming in Sprint 03)`,
-            [{ text: 'OK' }]
-          );
+          try {
+            // Look up session by join code
+            const lookupResponse = await api.get(`/session/by-code/${joinCode}`);
+            const sessionId = lookupResponse.data.session_id;
+            console.log('📍 Session found:', sessionId);
+
+            // Join the session
+            const joinResponse = await api.post(`/session/${sessionId}/join`, {
+              join_code: joinCode
+            });
+            console.log('✅ Successfully joined session:', joinResponse.data);
+
+            // Navigate to lobby as guest
+            if (navigationRef.current) {
+              navigationRef.current.navigate('Lobby', {
+                sessionId: sessionId,
+                role: 'guest'
+              });
+            }
+          } catch (error) {
+            console.error('❌ Failed to join session:', error);
+
+            let errorMessage = 'Failed to join session. Please try again.';
+            if (error.response?.status === 404) {
+              errorMessage = 'This session no longer exists.';
+            } else if (error.response?.status === 400) {
+              errorMessage = error.response.data.message || 'Unable to join this session.';
+            }
+
+            Alert.alert('Join Failed', errorMessage, [{ text: 'OK' }]);
+          }
         }
       } else {
         console.log('ℹ️ Deep link did not match join pattern:', { path, queryParams });
@@ -172,7 +245,10 @@ function Navigation() {
       >
         {currentUser ? (
           // User is authenticated - show app screens
-          <Stack.Screen name="Home" component={HomeScreen} />
+          <>
+            <Stack.Screen name="Home" component={HomeScreen} />
+            <Stack.Screen name="Lobby" component={LobbyScreen} />
+          </>
         ) : (
           // User is not authenticated - show auth screens
           <>

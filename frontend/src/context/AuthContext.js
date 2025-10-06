@@ -29,7 +29,7 @@ export const AuthProvider = ({ children }) => {
 
   /**
    * Check for pending join code after successful authentication
-   * Alerts user if a join code is waiting
+   * Returns the join code if one is found (S-402: auto-join flow)
    */
   const checkPendingJoinCode = async () => {
     try {
@@ -37,24 +37,12 @@ export const AuthProvider = ({ children }) => {
       if (joinCode) {
         console.log('✅ Found pending join code after auth:', joinCode);
         setPendingJoinCode(joinCode);
-
-        // Alert user that they can now join the session
-        Alert.alert(
-          'Join Session',
-          `You can now join the session with code: ${joinCode}\n\n(Navigation to lobby coming in Sprint 03)`,
-          [
-            {
-              text: 'OK',
-              onPress: () => {
-                // In Sprint 03, this will navigate to the lobby screen
-                console.log('User acknowledged pending join code:', joinCode);
-              },
-            },
-          ]
-        );
+        return joinCode;
       }
+      return null;
     } catch (error) {
       console.error('Error checking pending join code:', error);
+      return null;
     }
   };
 

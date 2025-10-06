@@ -6,11 +6,14 @@ import {
   StyleSheet,
   SafeAreaView,
   Animated,
-  StatusBar
+  StatusBar,
+  Alert
 } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import { useLocation } from '../context/LocationContext';
 import { testDeepLinkFlow } from '../utils/testDeepLink';
+import InviteModal from '../components/InviteModal';
+import api from '../services/api';
 
 /**
  * HomeScreen - Main authenticated home screen
@@ -19,14 +22,18 @@ import { testDeepLinkFlow } from '../utils/testDeepLink';
  * - S-301: Animated logo and CTAs based on user state
  * - S-302: Location permission integration
  * - S-203: Auth gate for invite actions (this screen is auth-only)
+ * - S-402: Invite flow with modal and session creation
  *
  * Note: This screen is only accessible to authenticated users.
  * Deep link handling for guest joins is in App.js
  */
-export default function HomeScreen() {
+export default function HomeScreen({ navigation }) {
   const { currentUser, userProfile, logout } = useAuth();
   const { requestLocation, loading: locationLoading } = useLocation();
   const [expanded, setExpanded] = useState(false);
+  const [inviteModalVisible, setInviteModalVisible] = useState(false);
+  const [sessionData, setSessionData] = useState(null);
+  const [creatingSession, setCreatingSession] = useState(false);
 
   // Animation values
   const logoPosition = useRef(new Animated.Value(0)).current;
@@ -57,18 +64,52 @@ export default function HomeScreen() {
     // S-203: Auth gate - verify user is authenticated before invite
     if (!currentUser) {
       console.warn('[TELEMETRY] Unauthorized invite attempt - user not authenticated');
-      alert('Please log in to invite others to a session.');
+      Alert.alert('Login Required', 'Please log in to invite others to a session.');
       return;
     }
 
     console.log('[TELEMETRY] Invite action initiated by user:', currentUser.uid);
 
-    const result = await requestLocation();
-    if (result.success) {
-      console.log('Location obtained:', result.location);
-      // TODO: S-401/S-402 - Create session and open invite modal
-      console.log('Next: Create session and show invite modal');
+    // S-302: Request location permission
+    const locationResult = await requestLocation();
+    if (!locationResult.success) {
+      console.log('❌ Location permission denied');
+      return;
     }
+
+    console.log('✅ Location obtained:', locationResult.location);
+
+    try {
+      setCreatingSession(true);
+
+      // S-401/S-402: Create session
+      const response = await api.post('/session', {
+        host_lat: locationResult.location.latitude,
+        host_lng: locationResult.location.longitude
+      });
+
+      console.log('✅ Session created:', response.data);
+      setSessionData(response.data);
+      setInviteModalVisible(true);
+    } catch (error) {
+      console.error('❌ Failed to create session:', error);
+      Alert.alert(
+        'Error',
+        error.response?.data?.message || 'Failed to create session. Please try again.'
+      );
+    } finally {
+      setCreatingSession(false);
+    }
+  };
+
+  const handleInviteSent = () => {
+    // Navigate to lobby after invite is sent
+    console.log('📤 Invite sent, navigating to lobby');
+    setInviteModalVisible(false);
+    navigation.navigate('Lobby', {
+      sessionId: sessionData.session_id,
+      role: 'host'
+    });
   };
 
   const handleStartBrowse = async () => {
@@ -152,12 +193,12 @@ export default function HomeScreen() {
             ]}
           >
             <TouchableOpacity
-              style={[styles.secondaryButton, locationLoading && styles.buttonDisabled]}
+              style={[styles.secondaryButton, (locationLoading || creatingSession) && styles.buttonDisabled]}
               onPress={handleInvite}
-              disabled={locationLoading}
+              disabled={locationLoading || creatingSession}
             >
               <Text style={styles.secondaryButtonText}>
-                {locationLoading ? '📍 Getting Location...' : '📤 Invite Someone'}
+                {creatingSession ? '⏳ Creating Session...' : locationLoading ? '📍 Getting Location...' : '📤 Invite Someone'}
               </Text>
             </TouchableOpacity>
 
@@ -177,6 +218,15 @@ export default function HomeScreen() {
           </Animated.View>
         )}
       </View>
+
+      {/* S-402: Invite Modal */}
+      <InviteModal
+        visible={inviteModalVisible}
+        onClose={() => setInviteModalVisible(false)}
+        onInviteSent={handleInviteSent}
+        sessionData={sessionData}
+        hostProfile={userProfile}
+      />
     </SafeAreaView>
   );
 }
