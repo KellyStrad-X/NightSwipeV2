@@ -12,6 +12,10 @@ export const useLocation = () => {
   return context;
 };
 
+// Configuration
+const LOCATION_TIMEOUT = 15000; // 15 seconds for GPS acquisition
+const MAX_LOCATION_AGE = 5000; // Accept coordinates up to 5s old
+
 export const LocationProvider = ({ children }) => {
   const [currentLocation, setCurrentLocation] = useState(null);
   const [permissionStatus, setPermissionStatus] = useState(null);
@@ -19,7 +23,7 @@ export const LocationProvider = ({ children }) => {
 
   /**
    * Request location permission and get current coordinates
-   * Returns: { success: boolean, location?: {lat, lng}, error?: string }
+   * Returns: { success: boolean, location?: {lat, lng}, isFallback?: boolean, error?: string }
    */
   const requestLocation = async () => {
     setLoading(true);
@@ -57,37 +61,93 @@ export const LocationProvider = ({ children }) => {
         return { success: false, error: 'Permission denied' };
       }
 
-      // Get current location with timeout
-      const locationPromise = Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.High,
-      });
+      // Get current location with built-in timeout and maximumAge
+      try {
+        const location = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.High,
+          timeout: LOCATION_TIMEOUT,
+          maximumAge: MAX_LOCATION_AGE,
+        });
 
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Location request timed out')), 10000);
-      });
+        const coordinates = {
+          lat: location.coords.latitude,
+          lng: location.coords.longitude,
+        };
 
-      const location = await Promise.race([locationPromise, timeoutPromise]);
+        setCurrentLocation(coordinates);
+        setLoading(false);
 
-      const coordinates = {
-        lat: location.coords.latitude,
-        lng: location.coords.longitude,
-      };
+        return { success: true, location: coordinates };
+      } catch (locationError) {
+        // Check if it's a timeout error
+        const isTimeout =
+          locationError.code === 'E_LOCATION_TIMEOUT' ||
+          locationError.message?.toLowerCase().includes('timed out');
 
-      setCurrentLocation(coordinates);
-      setLoading(false);
+        if (isTimeout) {
+          console.warn('Location request timed out, attempting fallback to last known position');
 
-      return { success: true, location: coordinates };
-    } catch (error) {
-      setLoading(false);
-      console.error('Location error:', error);
+          // Try to get last known position as fallback
+          try {
+            const lastKnown = await Location.getLastKnownPositionAsync({
+              maxAge: 60000, // Accept positions up to 1 minute old
+              requiredAccuracy: 500, // Accept accuracy within 500m
+            });
 
-      let errorMessage = 'Failed to get your location. Please try again.';
-      if (error.message.includes('timeout')) {
-        errorMessage = 'Location request timed out. Please check your connection and try again.';
+            if (lastKnown) {
+              const fallbackCoordinates = {
+                lat: lastKnown.coords.latitude,
+                lng: lastKnown.coords.longitude,
+              };
+
+              setCurrentLocation(fallbackCoordinates);
+              setLoading(false);
+
+              console.warn('Using last known position (may be stale):', fallbackCoordinates);
+              return { success: true, location: fallbackCoordinates, isFallback: true };
+            }
+          } catch (fallbackError) {
+            console.error('Last known position also unavailable:', fallbackError);
+          }
+
+          // No fallback available - offer retry
+          setLoading(false);
+          return new Promise((resolve) => {
+            Alert.alert(
+              'Location Timeout',
+              'Unable to get your current location. This can happen indoors or in areas with poor GPS signal.',
+              [
+                {
+                  text: 'Cancel',
+                  style: 'cancel',
+                  onPress: () => resolve({ success: false, error: 'Location timeout - user cancelled' }),
+                },
+                {
+                  text: 'Retry',
+                  onPress: async () => {
+                    console.info('Retrying location request after timeout');
+                    const retryResult = await requestLocation();
+                    resolve(retryResult);
+                  },
+                },
+              ]
+            );
+          });
+        }
+
+        // Other location errors (not timeout)
+        setLoading(false);
+        console.error('Location error:', locationError);
+
+        const errorMessage = 'Failed to get your location. Please try again.';
+        Alert.alert('Location Error', errorMessage);
+        return { success: false, error: errorMessage };
       }
-
-      Alert.alert('Location Error', errorMessage);
-      return { success: false, error: errorMessage };
+    } catch (error) {
+      // Permission/service errors
+      setLoading(false);
+      console.error('Location permission/service error:', error);
+      return { success: false, error: error.message };
     }
   };
 
