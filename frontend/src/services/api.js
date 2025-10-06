@@ -3,6 +3,9 @@ import * as SecureStore from 'expo-secure-store';
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000';
 
+// Debug: Log API URL on load
+console.log('🔧 API Service initialized with URL:', API_URL);
+
 /**
  * Get authentication token from secure storage
  */

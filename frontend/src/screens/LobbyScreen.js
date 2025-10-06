@@ -46,7 +46,7 @@ export default function LobbyScreen({ route, navigation }) {
   // Fetch session data
   const fetchSession = async () => {
     try {
-      const response = await api.get(`/session/${sessionId}`);
+      const response = await api.get(`/api/v1/session/${sessionId}`);
       setSessionData(response.data);
       setError(null);
       console.log('📊 Lobby data updated:', response.data);

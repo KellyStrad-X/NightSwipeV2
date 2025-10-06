@@ -59,12 +59,12 @@ function Navigation() {
 
         try {
           // Look up session by join code
-          const lookupResponse = await api.get(`/session/by-code/${pendingJoinCode}`);
+          const lookupResponse = await api.get(`/api/v1/session/by-code/${pendingJoinCode}`);
           const sessionId = lookupResponse.data.session_id;
           console.log('📍 Session found:', sessionId);
 
           // Join the session
-          const joinResponse = await api.post(`/session/${sessionId}/join`, {
+          const joinResponse = await api.post(`/api/v1/session/${sessionId}/join`, {
             join_code: pendingJoinCode
           });
           console.log('✅ Successfully joined session:', joinResponse.data);
@@ -187,12 +187,12 @@ function Navigation() {
 
           try {
             // Look up session by join code
-            const lookupResponse = await api.get(`/session/by-code/${joinCode}`);
+            const lookupResponse = await api.get(`/api/v1/session/by-code/${joinCode}`);
             const sessionId = lookupResponse.data.session_id;
             console.log('📍 Session found:', sessionId);
 
             // Join the session
-            const joinResponse = await api.post(`/session/${sessionId}/join`, {
+            const joinResponse = await api.post(`/api/v1/session/${sessionId}/join`, {
               join_code: joinCode
             });
             console.log('✅ Successfully joined session:', joinResponse.data);
