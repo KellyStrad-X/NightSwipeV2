@@ -11,6 +11,7 @@ import LoginScreen from './src/screens/LoginScreen';
 import RegisterScreen from './src/screens/RegisterScreen';
 import HomeScreen from './src/screens/HomeScreen';
 import LobbyScreen from './src/screens/LobbyScreen';
+import DeckScreen from './src/screens/DeckScreen';
 import { storePendingJoinCode } from './src/utils/deepLinkStorage';
 import api from './src/services/api';
 
@@ -248,6 +249,7 @@ function Navigation() {
           <>
             <Stack.Screen name="Home" component={HomeScreen} />
             <Stack.Screen name="Lobby" component={LobbyScreen} />
+            <Stack.Screen name="Deck" component={DeckScreen} />
           </>
         ) : (
           // User is not authenticated - show auth screens

@@ -109,15 +109,17 @@ export default function LobbyScreen({ route, navigation }) {
       const response = await api.post(`/api/v1/session/${sessionId}/deck`);
       console.log('✅ Deck generated:', response.data);
 
-      // TODO: S-502 - Navigate to swipe screen with deck data
-      // For now, show success message
-      Alert.alert(
-        'Deck Ready!',
-        `Found ${response.data.total_count} places nearby!\n\nSwipe UI coming in S-502.`,
-        [{ text: 'OK' }]
-      );
+      // Navigate to deck/swipe screen
+      navigation.navigate('Deck', { sessionId });
     } catch (err) {
       console.error('Failed to generate deck:', err);
+
+      // If deck already exists, just navigate to it
+      if (err.response?.data?.error === 'Deck already generated') {
+        console.log('📚 Deck already exists, navigating to it');
+        navigation.navigate('Deck', { sessionId });
+        return;
+      }
 
       let errorMessage = 'Failed to generate deck. Please try again.';
       if (err.response?.data?.message) {
