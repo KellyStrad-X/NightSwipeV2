@@ -133,25 +133,35 @@ export default function DeckScreen({ route, navigation }) {
   };
 
   const submitSwipe = async (placeId, direction) => {
+    console.log(`📤 Submitting swipe for place ${placeId}...`);
     try {
       const response = await api.post(`/api/v1/session/${sessionId}/swipe`, {
         place_id: placeId,
         direction: direction
       });
-      console.log('✅ Swipe submitted:', response.data);
+      console.log('✅ Swipe submitted successfully:', response.data);
 
       // Increment counter when swipe successfully submitted
-      setSubmittedSwipes(prev => prev + 1);
+      setSubmittedSwipes(prev => {
+        const newCount = prev + 1;
+        console.log(`📊 Swipe count: ${prev} -> ${newCount}`);
+        return newCount;
+      });
     } catch (err) {
       // Handle duplicate swipes gracefully (409 is okay, means already swiped)
       if (err.response?.status === 409) {
         console.log('⚠️ Duplicate swipe detected (already swiped this card)');
         // Still count it as submitted since it exists in backend
-        setSubmittedSwipes(prev => prev + 1);
+        setSubmittedSwipes(prev => {
+          const newCount = prev + 1;
+          console.log(`📊 Swipe count (duplicate): ${prev} -> ${newCount}`);
+          return newCount;
+        });
         return;
       }
 
       console.error('❌ Failed to submit swipe:', err);
+      console.error('Error details:', err.response?.data || err.message);
 
       // TODO: S-503 - Add retry queue for failed swipes
       // For now, just log the error and continue
