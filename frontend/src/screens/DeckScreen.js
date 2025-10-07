@@ -193,43 +193,49 @@ export default function DeckScreen({ route, navigation }) {
   // Start polling when user finishes deck
   useEffect(() => {
     if (currentIndex >= deck.length && deck.length > 0 && !polling) {
-      console.log('✅ User finished deck, checking status...');
+      console.log('✅ User finished deck, waiting for last swipe to sync...');
 
-      // Fetch status to check if we're in solo or two-user mode
-      fetchSessionStatus().then(status => {
-        if (status) {
-          const userCount = status.users.length;
+      // Wait 1 second before checking status to allow last swipe to reach backend
+      // This prevents race condition where UI updates before network request completes
+      setTimeout(() => {
+        console.log('✅ Checking status after delay...');
 
-          if (userCount === 1) {
-            // Solo mode - navigate directly to results
-            console.log('📱 Solo mode detected');
-            // TODO: S-601 - Navigate to solo results
-            Alert.alert(
-              'All Done!',
-              'You\'ve swiped through all cards. Results screen coming in S-601!',
-              [{ text: 'OK', onPress: () => navigation.goBack() }]
-            );
-          } else {
-            // Two-user mode - check if both finished
-            const allFinished = status.users.every(u => u.finished);
+        // Fetch status to check if we're in solo or two-user mode
+        fetchSessionStatus().then(status => {
+          if (status) {
+            const userCount = status.users.length;
 
-            if (allFinished) {
-              // Both already finished
-              console.log('🎉 Both users already finished!');
-              // TODO: S-602 - Navigate to match results
+            if (userCount === 1) {
+              // Solo mode - navigate directly to results
+              console.log('📱 Solo mode detected');
+              // TODO: S-601 - Navigate to solo results
               Alert.alert(
                 'All Done!',
-                'Both users have finished swiping. Match results coming soon!',
+                'You\'ve swiped through all cards. Results screen coming in S-601!',
                 [{ text: 'OK', onPress: () => navigation.goBack() }]
               );
             } else {
-              // Other user still swiping - start polling
-              console.log('⏳ Waiting for other user...');
-              setPolling(true);
+              // Two-user mode - check if both finished
+              const allFinished = status.users.every(u => u.finished);
+
+              if (allFinished) {
+                // Both already finished
+                console.log('🎉 Both users already finished!');
+                // TODO: S-602 - Navigate to match results
+                Alert.alert(
+                  'All Done!',
+                  'Both users have finished swiping. Match results coming soon!',
+                  [{ text: 'OK', onPress: () => navigation.goBack() }]
+                );
+              } else {
+                // Other user still swiping - start polling
+                console.log('⏳ Waiting for other user...');
+                setPolling(true);
+              }
             }
           }
-        }
-      });
+        });
+      }, 1000); // 1 second delay
     }
   }, [currentIndex, deck.length]);
 
