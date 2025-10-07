@@ -9,7 +9,8 @@ import {
   Dimensions,
   TouchableOpacity,
   ActivityIndicator,
-  Alert
+  Alert,
+  Image
 } from 'react-native';
 import api from '../services/api';
 
@@ -194,10 +195,23 @@ export default function DeckScreen({ route, navigation }) {
 
           {/* Card content */}
           <View style={styles.cardContent}>
-            {/* Photo placeholder */}
+            {/* Photo */}
             <View style={styles.photoContainer}>
-              <Text style={styles.photoPlaceholder}>📷</Text>
-              <Text style={styles.photoText}>Photo: {place.name}</Text>
+              {place.photo_url && !place.photo_url.includes('placeholder.com') ? (
+                <Image
+                  source={{ uri: place.photo_url }}
+                  style={styles.photo}
+                  resizeMode="cover"
+                  onError={(error) => {
+                    console.log('Failed to load image for:', place.name);
+                  }}
+                />
+              ) : (
+                <View style={styles.photoPlaceholderView}>
+                  <Text style={styles.photoPlaceholder}>📷</Text>
+                  <Text style={styles.photoText}>No photo available</Text>
+                </View>
+              )}
             </View>
 
             {/* Info section */}
@@ -242,7 +256,17 @@ export default function DeckScreen({ route, navigation }) {
       >
         <View style={styles.cardContent}>
           <View style={styles.photoContainer}>
-            <Text style={styles.photoPlaceholder}>📷</Text>
+            {place.photo_url && !place.photo_url.includes('placeholder.com') ? (
+              <Image
+                source={{ uri: place.photo_url }}
+                style={styles.photo}
+                resizeMode="cover"
+              />
+            ) : (
+              <View style={styles.photoPlaceholderView}>
+                <Text style={styles.photoPlaceholder}>📷</Text>
+              </View>
+            )}
           </View>
           <View style={styles.infoContainer}>
             <Text style={styles.placeName}>{place.name}</Text>
@@ -420,6 +444,16 @@ const styles = StyleSheet.create({
   photoContainer: {
     height: '60%',
     backgroundColor: '#2a2a2a',
+    justifyContent: 'center',
+    alignItems: 'center',
+    overflow: 'hidden',
+  },
+  photo: {
+    width: '100%',
+    height: '100%',
+  },
+  photoPlaceholderView: {
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },

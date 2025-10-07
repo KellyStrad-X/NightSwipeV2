@@ -257,7 +257,8 @@ export default function LobbyScreen({ route, navigation }) {
 
         {/* Action Buttons */}
         <View style={styles.actionsContainer}>
-          {isHost && hasGuest && (
+          {/* Show Start Browse button when both users are present */}
+          {hasGuest && (
             <TouchableOpacity
               style={[styles.startButton, generatingDeck && styles.startButtonDisabled]}
               onPress={handleStartBrowse}
@@ -269,7 +270,9 @@ export default function LobbyScreen({ route, navigation }) {
                   <Text style={styles.startButtonText}>Generating Deck...</Text>
                 </>
               ) : (
-                <Text style={styles.startButtonText}>Start Browse 🚀</Text>
+                <Text style={styles.startButtonText}>
+                  {isHost ? 'Start Browse 🚀' : 'Start Browse 🚀'}
+                </Text>
               )}
             </TouchableOpacity>
           )}
