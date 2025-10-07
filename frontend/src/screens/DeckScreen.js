@@ -37,6 +37,7 @@ export default function DeckScreen({ route, navigation }) {
   const [error, setError] = useState(null);
   const [sessionStatus, setSessionStatus] = useState(null);
   const [polling, setPolling] = useState(false);
+  const [submittedSwipes, setSubmittedSwipes] = useState(0); // Track completed swipe submissions
 
   const position = useRef(new Animated.ValueXY()).current;
   const swipeDirection = useRef(new Animated.Value(0)).current;
@@ -138,10 +139,15 @@ export default function DeckScreen({ route, navigation }) {
         direction: direction
       });
       console.log('✅ Swipe submitted:', response.data);
+
+      // Increment counter when swipe successfully submitted
+      setSubmittedSwipes(prev => prev + 1);
     } catch (err) {
       // Handle duplicate swipes gracefully (409 is okay, means already swiped)
       if (err.response?.status === 409) {
         console.log('⚠️ Duplicate swipe detected (already swiped this card)');
+        // Still count it as submitted since it exists in backend
+        setSubmittedSwipes(prev => prev + 1);
         return;
       }
 
@@ -190,54 +196,49 @@ export default function DeckScreen({ route, navigation }) {
     return () => clearInterval(interval);
   }, [polling, sessionId]);
 
-  // Start polling when user finishes deck
+  // Check for completion when all swipes are submitted
   useEffect(() => {
-    if (currentIndex >= deck.length && deck.length > 0 && !polling) {
-      console.log('✅ User finished deck, waiting for last swipe to sync...');
+    // Only proceed if we've swiped all cards AND all swipes have been submitted
+    if (currentIndex >= deck.length && submittedSwipes >= deck.length && deck.length > 0 && !polling) {
+      console.log(`✅ User finished deck and all ${submittedSwipes} swipes submitted, checking status...`);
 
-      // Wait 1 second before checking status to allow last swipe to reach backend
-      // This prevents race condition where UI updates before network request completes
-      setTimeout(() => {
-        console.log('✅ Checking status after delay...');
+      // Fetch status to check if we're in solo or two-user mode
+      fetchSessionStatus().then(status => {
+        if (status) {
+          const userCount = status.users.length;
 
-        // Fetch status to check if we're in solo or two-user mode
-        fetchSessionStatus().then(status => {
-          if (status) {
-            const userCount = status.users.length;
+          if (userCount === 1) {
+            // Solo mode - navigate directly to results
+            console.log('📱 Solo mode detected');
+            // TODO: S-601 - Navigate to solo results
+            Alert.alert(
+              'All Done!',
+              'You\'ve swiped through all cards. Results screen coming in S-601!',
+              [{ text: 'OK', onPress: () => navigation.goBack() }]
+            );
+          } else {
+            // Two-user mode - check if both finished
+            const allFinished = status.users.every(u => u.finished);
 
-            if (userCount === 1) {
-              // Solo mode - navigate directly to results
-              console.log('📱 Solo mode detected');
-              // TODO: S-601 - Navigate to solo results
+            if (allFinished) {
+              // Both already finished
+              console.log('🎉 Both users already finished!');
+              // TODO: S-602 - Navigate to match results
               Alert.alert(
                 'All Done!',
-                'You\'ve swiped through all cards. Results screen coming in S-601!',
+                'Both users have finished swiping. Match results coming soon!',
                 [{ text: 'OK', onPress: () => navigation.goBack() }]
               );
             } else {
-              // Two-user mode - check if both finished
-              const allFinished = status.users.every(u => u.finished);
-
-              if (allFinished) {
-                // Both already finished
-                console.log('🎉 Both users already finished!');
-                // TODO: S-602 - Navigate to match results
-                Alert.alert(
-                  'All Done!',
-                  'Both users have finished swiping. Match results coming soon!',
-                  [{ text: 'OK', onPress: () => navigation.goBack() }]
-                );
-              } else {
-                // Other user still swiping - start polling
-                console.log('⏳ Waiting for other user...');
-                setPolling(true);
-              }
+              // Other user still swiping - start polling
+              console.log('⏳ Waiting for other user...');
+              setPolling(true);
             }
           }
-        });
-      }, 1000); // 1 second delay
+        }
+      });
     }
-  }, [currentIndex, deck.length]);
+  }, [currentIndex, deck.length, submittedSwipes, polling]);
 
   const resetPosition = () => {
     Animated.spring(position, {
@@ -431,6 +432,22 @@ export default function DeckScreen({ route, navigation }) {
   }
 
   if (currentIndex >= deck.length) {
+    // Check if swipes are still being submitted
+    if (submittedSwipes < deck.length) {
+      // Show syncing screen while swipes are in flight
+      return (
+        <SafeAreaView style={styles.container}>
+          <View style={styles.doneContainer}>
+            <ActivityIndicator size="large" color="#6200ee" style={{ marginBottom: 24 }} />
+            <Text style={styles.doneText}>Syncing swipes...</Text>
+            <Text style={styles.doneSubtext}>
+              {submittedSwipes} / {deck.length} submitted
+            </Text>
+          </View>
+        </SafeAreaView>
+      );
+    }
+
     // End of deck - show waiting screen if polling
     if (polling && sessionStatus) {
       const otherUser = sessionStatus.users.find(u => !u.finished);
@@ -455,21 +472,12 @@ export default function DeckScreen({ route, navigation }) {
       );
     }
 
-    // Default end screen (shouldn't show this anymore, but keep as fallback)
+    // Fallback loading screen (while waiting for status check)
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.doneContainer}>
-          <Text style={styles.doneEmoji}>🎉</Text>
-          <Text style={styles.doneText}>All done!</Text>
-          <Text style={styles.doneSubtext}>
-            You've swiped through all {deck.length} places
-          </Text>
-          <TouchableOpacity
-            style={styles.doneButton}
-            onPress={() => navigation.goBack()}
-          >
-            <Text style={styles.doneButtonText}>Back to Lobby</Text>
-          </TouchableOpacity>
+          <ActivityIndicator size="large" color="#6200ee" style={{ marginBottom: 24 }} />
+          <Text style={styles.doneText}>Checking status...</Text>
         </View>
       </SafeAreaView>
     );
