@@ -86,20 +86,27 @@ export default function DeckScreen({ route, navigation }) {
   // Create pan responder for gestures
   const panResponder = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
+      onStartShouldSetPanResponder: () => {
+        console.log('👆 Touch started on card');
+        return true;
+      },
       onPanResponderMove: (evt, gesture) => {
         position.setValue({ x: gesture.dx, y: gesture.dy });
         swipeDirection.setValue(gesture.dx);
       },
       onPanResponderRelease: (evt, gesture) => {
+        console.log(`👋 Gesture released: dx=${gesture.dx}, threshold=${SWIPE_THRESHOLD}`);
         if (gesture.dx > SWIPE_THRESHOLD) {
           // Swipe right - Like
+          console.log('➡️ Detected RIGHT swipe');
           forceSwipe('right');
         } else if (gesture.dx < -SWIPE_THRESHOLD) {
           // Swipe left - Reject
+          console.log('⬅️ Detected LEFT swipe');
           forceSwipe('left');
         } else {
           // Spring back to center
+          console.log('↩️ Swipe too short, resetting position');
           resetPosition();
         }
       },
