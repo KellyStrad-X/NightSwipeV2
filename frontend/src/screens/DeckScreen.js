@@ -102,14 +102,20 @@ export default function DeckScreen({ route, navigation }) {
   };
 
   const onSwipeComplete = (direction) => {
-    const currentPlace = deck[currentIndex];
-    console.log(`${direction === 'right' ? '♥' : '✗'} Swiped ${direction}:`, currentPlace.name);
+    // Use functional update to avoid state closure issues
+    setCurrentIndex(prevIndex => {
+      const currentPlace = deck[prevIndex];
 
-    // TODO: S-503 - Submit swipe to backend
-    // For now, just move to next card
+      // Safely log the swipe
+      if (currentPlace) {
+        console.log(`${direction === 'right' ? '♥' : '✗'} Swiped ${direction}:`, currentPlace.name);
+        // TODO: S-503 - Submit swipe to backend
+      }
+
+      return prevIndex + 1;
+    });
 
     position.setValue({ x: 0, y: 0 });
-    setCurrentIndex(currentIndex + 1);
   };
 
   const resetPosition = () => {

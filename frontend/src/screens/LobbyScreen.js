@@ -103,25 +103,33 @@ export default function LobbyScreen({ route, navigation }) {
 
   const handleStartBrowse = async () => {
     setGeneratingDeck(true);
-    console.log('🚀 Starting browse - generating deck for session:', sessionId);
+    console.log('🚀 Starting browse - checking deck for session:', sessionId);
 
     try {
+      // First check if deck already exists
+      try {
+        const checkResponse = await api.get(`/api/v1/session/${sessionId}/deck`);
+        console.log('✅ Deck already exists, navigating to it');
+        navigation.navigate('Deck', { sessionId });
+        return;
+      } catch (checkErr) {
+        // Deck doesn't exist, continue to generate (only if 404)
+        if (checkErr.response?.status !== 404) {
+          throw checkErr; // Re-throw if it's not a "not found" error
+        }
+      }
+
+      // Deck doesn't exist, generate it (host does this)
+      console.log('📝 Generating new deck...');
       const response = await api.post(`/api/v1/session/${sessionId}/deck`);
       console.log('✅ Deck generated:', response.data);
 
       // Navigate to deck/swipe screen
       navigation.navigate('Deck', { sessionId });
     } catch (err) {
-      console.error('Failed to generate deck:', err);
+      console.error('Failed to start browse:', err);
 
-      // If deck already exists, just navigate to it
-      if (err.response?.data?.error === 'Deck already generated') {
-        console.log('📚 Deck already exists, navigating to it');
-        navigation.navigate('Deck', { sessionId });
-        return;
-      }
-
-      let errorMessage = 'Failed to generate deck. Please try again.';
+      let errorMessage = 'Failed to start browsing. Please try again.';
       if (err.response?.data?.message) {
         errorMessage = err.response.data.message;
       } else if (err.response?.status === 404) {
