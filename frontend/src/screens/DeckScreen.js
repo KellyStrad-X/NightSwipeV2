@@ -45,18 +45,8 @@ export default function DeckScreen({ route, navigation }) {
 
   const fetchDeck = async () => {
     try {
-      // First get the deck that was already generated
-      const sessionResponse = await api.get(`/api/v1/session/${sessionId}`);
-
-      if (!sessionResponse.data.deck_seed) {
-        Alert.alert('No Deck', 'Deck has not been generated yet.');
-        navigation.goBack();
-        return;
-      }
-
-      // TODO: Add GET /session/:id/deck endpoint to retrieve deck
-      // For now, we'll generate it again (temporary workaround)
-      const deckResponse = await api.post(`/api/v1/session/${sessionId}/deck`);
+      // Fetch the deck from backend
+      const deckResponse = await api.get(`/api/v1/session/${sessionId}/deck`);
 
       const sortedDeck = deckResponse.data.deck.sort((a, b) => a.order - b.order);
       setDeck(sortedDeck);
@@ -65,18 +55,16 @@ export default function DeckScreen({ route, navigation }) {
     } catch (err) {
       console.error('Failed to fetch deck:', err);
 
-      // If deck already exists, that's actually fine - need GET endpoint
-      if (err.response?.data?.error === 'Deck already generated') {
-        // For MVP, just show error - need to implement GET endpoint
+      if (err.response?.status === 404) {
         Alert.alert(
-          'Deck Already Generated',
-          'Please restart the session to generate a new deck. GET endpoint coming soon.',
+          'No Deck',
+          'Deck has not been generated yet. Please go back and generate it first.',
           [{ text: 'OK', onPress: () => navigation.goBack() }]
         );
       } else {
         setError(err.response?.data?.message || 'Failed to load deck');
-        setLoading(false);
       }
+      setLoading(false);
     }
   };
 

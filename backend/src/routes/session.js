@@ -469,6 +469,81 @@ router.get('/session/:id', verifyFirebaseToken, async (req, res) => {
 });
 
 /**
+ * GET /session/:id/deck
+ * Retrieve deck for session
+ *
+ * Response (200):
+ * {
+ *   "session_id": string,
+ *   "deck": [...],
+ *   "deck_seed": string,
+ *   "total_count": number
+ * }
+ */
+router.get('/session/:id/deck', verifyFirebaseToken, async (req, res) => {
+  try {
+    const { id: sessionId } = req.params;
+    const userId = req.user.uid;
+
+    const db = getDb();
+    const sessionRef = db.collection('sessions').doc(sessionId);
+    const sessionDoc = await sessionRef.get();
+
+    // Check if session exists
+    if (!sessionDoc.exists) {
+      return res.status(404).json({
+        error: 'Session not found',
+        message: 'The session does not exist'
+      });
+    }
+
+    const sessionData = sessionDoc.data();
+
+    // Check if user is a member of this session
+    const memberDoc = await sessionRef.collection('session_members').doc(userId).get();
+    if (!memberDoc.exists) {
+      return res.status(403).json({
+        error: 'Forbidden',
+        message: 'You are not a member of this session'
+      });
+    }
+
+    // Check if deck exists
+    if (!sessionData.deck_seed) {
+      return res.status(404).json({
+        error: 'Deck not found',
+        message: 'Deck has not been generated for this session yet'
+      });
+    }
+
+    // Fetch deck from subcollection
+    const deckSnapshot = await sessionRef.collection('deck').get();
+    const deck = [];
+    deckSnapshot.forEach(doc => {
+      deck.push(doc.data());
+    });
+
+    // Sort by order
+    deck.sort((a, b) => a.order - b.order);
+
+    console.log(`✅ Retrieved deck with ${deck.length} places for session ${sessionId}`);
+
+    res.status(200).json({
+      session_id: sessionId,
+      deck: deck,
+      deck_seed: sessionData.deck_seed,
+      total_count: deck.length
+    });
+  } catch (error) {
+    console.error('Error retrieving deck:', error);
+    res.status(500).json({
+      error: 'Failed to retrieve deck',
+      message: error.message
+    });
+  }
+});
+
+/**
  * POST /session/:id/deck
  * Generate deck of places for session
  *
