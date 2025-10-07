@@ -44,7 +44,7 @@ export default function DeckScreen({ route, navigation }) {
     fetchDeck();
   }, []);
 
-  const fetchDeck = async () => {
+  const fetchDeck = async (retryCount = 0) => {
     try {
       // Fetch the deck from backend
       const deckResponse = await api.get(`/api/v1/session/${sessionId}/deck`);
@@ -55,6 +55,15 @@ export default function DeckScreen({ route, navigation }) {
       console.log('📚 Deck loaded:', sortedDeck.length, 'places');
     } catch (err) {
       console.error('Failed to fetch deck:', err);
+
+      // If 404 and we haven't retried yet, wait and retry (Firestore consistency)
+      if (err.response?.status === 404 && retryCount < 3) {
+        console.log(`🔄 Deck not ready yet, retrying in ${500 * (retryCount + 1)}ms... (attempt ${retryCount + 1}/3)`);
+        setTimeout(() => {
+          fetchDeck(retryCount + 1);
+        }, 500 * (retryCount + 1)); // Progressive backoff: 500ms, 1s, 1.5s
+        return;
+      }
 
       if (err.response?.status === 404) {
         Alert.alert(
