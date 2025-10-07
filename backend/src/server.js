@@ -34,7 +34,8 @@ app.get('/api/v1', (req, res) => {
       session_create: 'POST /api/v1/session (protected)',
       session_join: 'POST /api/v1/session/:id/join (protected)',
       session_get: 'GET /api/v1/session/:id (protected)',
-      places: '/api/v1/places (coming soon)'
+      session_by_code: 'GET /api/v1/session/by-code/:code (protected)',
+      session_deck: 'POST /api/v1/session/:id/deck (protected)'
     }
   });
 });

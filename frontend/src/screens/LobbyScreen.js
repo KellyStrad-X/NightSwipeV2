@@ -39,6 +39,7 @@ export default function LobbyScreen({ route, navigation }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [polling, setPolling] = useState(true);
+  const [generatingDeck, setGeneratingDeck] = useState(false);
 
   const isHost = role === 'host';
   const hasGuest = sessionData?.guest !== null && sessionData?.guest !== undefined;
@@ -100,14 +101,37 @@ export default function LobbyScreen({ route, navigation }) {
     return () => clearInterval(interval);
   }, [polling, sessionId]);
 
-  const handleStartBrowse = () => {
-    // TODO: S-501 - Navigate to deck/swipe screen
-    console.log('🚀 Starting browse with session:', sessionId);
-    Alert.alert(
-      'Start Browse',
-      'Deck fetch and swipe UI coming in S-501/S-502!',
-      [{ text: 'OK' }]
-    );
+  const handleStartBrowse = async () => {
+    setGeneratingDeck(true);
+    console.log('🚀 Starting browse - generating deck for session:', sessionId);
+
+    try {
+      const response = await api.post(`/api/v1/session/${sessionId}/deck`);
+      console.log('✅ Deck generated:', response.data);
+
+      // TODO: S-502 - Navigate to swipe screen with deck data
+      // For now, show success message
+      Alert.alert(
+        'Deck Ready!',
+        `Found ${response.data.total_count} places nearby!\n\nSwipe UI coming in S-502.`,
+        [{ text: 'OK' }]
+      );
+    } catch (err) {
+      console.error('Failed to generate deck:', err);
+
+      let errorMessage = 'Failed to generate deck. Please try again.';
+      if (err.response?.data?.message) {
+        errorMessage = err.response.data.message;
+      } else if (err.response?.status === 404) {
+        errorMessage = 'No places found in your area. Try a different location.';
+      } else if (err.response?.status === 429) {
+        errorMessage = 'API quota exceeded. Please try again later.';
+      }
+
+      Alert.alert('Error', errorMessage, [{ text: 'OK' }]);
+    } finally {
+      setGeneratingDeck(false);
+    }
   };
 
   const handleCancelSession = async () => {
@@ -233,10 +257,18 @@ export default function LobbyScreen({ route, navigation }) {
         <View style={styles.actionsContainer}>
           {isHost && hasGuest && (
             <TouchableOpacity
-              style={styles.startButton}
+              style={[styles.startButton, generatingDeck && styles.startButtonDisabled]}
               onPress={handleStartBrowse}
+              disabled={generatingDeck}
             >
-              <Text style={styles.startButtonText}>Start Browse 🚀</Text>
+              {generatingDeck ? (
+                <>
+                  <ActivityIndicator size="small" color="#fff" style={{ marginRight: 8 }} />
+                  <Text style={styles.startButtonText}>Generating Deck...</Text>
+                </>
+              ) : (
+                <Text style={styles.startButtonText}>Start Browse 🚀</Text>
+              )}
             </TouchableOpacity>
           )}
 
@@ -394,6 +426,12 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingVertical: 18,
     alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+  },
+  startButtonDisabled: {
+    backgroundColor: '#4a00a5',
+    opacity: 0.7,
   },
   startButtonText: {
     color: '#fff',

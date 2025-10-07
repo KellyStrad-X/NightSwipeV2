@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const admin = require('firebase-admin');
 const crypto = require('crypto');
+const axios = require('axios');
+const seedrandom = require('seedrandom');
 const { verifyFirebaseToken } = require('../middleware/auth');
 
 // Get Firestore instance
@@ -13,6 +15,131 @@ const getDb = () => admin.firestore();
  */
 const generateJoinCode = () => {
   return crypto.randomBytes(4).toString('hex').toUpperCase();
+};
+
+/**
+ * Calculate distance between two coordinates using Haversine formula
+ * @param {number} lat1 - Latitude of point 1
+ * @param {number} lng1 - Longitude of point 1
+ * @param {number} lat2 - Latitude of point 2
+ * @param {number} lng2 - Longitude of point 2
+ * @returns {number} Distance in kilometers
+ */
+const calculateDistance = (lat1, lng1, lat2, lng2) => {
+  const R = 6371; // Earth's radius in kilometers
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+};
+
+/**
+ * Deterministically shuffle array using seed
+ * @param {Array} array - Array to shuffle
+ * @param {string} seed - Seed for random number generator
+ * @returns {Array} Shuffled array
+ */
+const shuffleWithSeed = (array, seed) => {
+  const rng = seedrandom(seed);
+  const shuffled = [...array];
+
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+
+  return shuffled;
+};
+
+/**
+ * Fetch places from Google Places API
+ * @param {number} lat - Latitude
+ * @param {number} lng - Longitude
+ * @param {number} radius - Search radius in meters
+ * @returns {Promise<Array>} Array of places
+ */
+const fetchPlacesFromGoogle = async (lat, lng, radius) => {
+  const apiKey = process.env.GOOGLE_PLACES_API_KEY;
+
+  if (!apiKey) {
+    throw new Error('GOOGLE_PLACES_API_KEY not configured');
+  }
+
+  const url = 'https://maps.googleapis.com/maps/api/place/nearbysearch/json';
+
+  try {
+    const response = await axios.get(url, {
+      params: {
+        location: `${lat},${lng}`,
+        radius: radius,
+        type: 'restaurant|bar|night_club|cafe',
+        key: apiKey
+      }
+    });
+
+    if (response.data.status === 'ZERO_RESULTS') {
+      return [];
+    }
+
+    if (response.data.status !== 'OK' && response.data.status !== 'ZERO_RESULTS') {
+      throw new Error(`Google Places API error: ${response.data.status}`);
+    }
+
+    return response.data.results || [];
+  } catch (error) {
+    console.error('Error fetching from Google Places API:', error);
+    throw error;
+  }
+};
+
+/**
+ * Normalize place data from Google Places API response
+ * @param {Object} place - Raw place data from Google
+ * @param {number} hostLat - Host latitude
+ * @param {number} hostLng - Host longitude
+ * @param {string} apiKey - Google API key for photo URLs
+ * @returns {Object} Normalized place data
+ */
+const normalizePlace = (place, hostLat, hostLng, apiKey) => {
+  // Determine category from types
+  let category = 'Activity';
+  if (place.types.includes('restaurant')) {
+    category = 'Restaurant';
+  } else if (place.types.includes('bar') || place.types.includes('night_club')) {
+    category = 'Bar';
+  } else if (place.types.includes('cafe')) {
+    category = 'Cafe';
+  }
+
+  // Get photo URL
+  let photoUrl = 'https://via.placeholder.com/400x300?text=No+Image';
+  if (place.photos && place.photos.length > 0) {
+    const photoRef = place.photos[0].photo_reference;
+    photoUrl = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${photoRef}&key=${apiKey}`;
+  }
+
+  // Calculate distance
+  const distance = calculateDistance(
+    hostLat,
+    hostLng,
+    place.geometry.location.lat,
+    place.geometry.location.lng
+  );
+
+  return {
+    place_id: place.place_id,
+    name: place.name,
+    photo_url: photoUrl,
+    category: category,
+    rating: place.rating || null,
+    review_count: place.user_ratings_total || 0,
+    address: place.vicinity || place.formatted_address || 'Address not available',
+    distance_km: Math.round(distance * 10) / 10 // Round to 1 decimal
+  };
 };
 
 /**
@@ -336,6 +463,154 @@ router.get('/session/:id', verifyFirebaseToken, async (req, res) => {
     console.error('Error getting session:', error);
     res.status(500).json({
       error: 'Failed to get session',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * POST /session/:id/deck
+ * Generate deck of places for session
+ *
+ * Response (200):
+ * {
+ *   "session_id": string,
+ *   "deck": [
+ *     {
+ *       "place_id": string,
+ *       "name": string,
+ *       "photo_url": string,
+ *       "category": string,
+ *       "rating": number | null,
+ *       "review_count": number,
+ *       "address": string,
+ *       "distance_km": number,
+ *       "order": number
+ *     }
+ *   ],
+ *   "deck_seed": string,
+ *   "total_count": number
+ * }
+ */
+router.post('/session/:id/deck', verifyFirebaseToken, async (req, res) => {
+  try {
+    const { id: sessionId } = req.params;
+    const userId = req.user.uid;
+
+    const db = getDb();
+    const sessionRef = db.collection('sessions').doc(sessionId);
+    const sessionDoc = await sessionRef.get();
+
+    // Check if session exists
+    if (!sessionDoc.exists) {
+      return res.status(404).json({
+        error: 'Session not found',
+        message: 'The session does not exist'
+      });
+    }
+
+    const sessionData = sessionDoc.data();
+
+    // Check if user is a member of this session
+    const memberDoc = await sessionRef.collection('session_members').doc(userId).get();
+    if (!memberDoc.exists) {
+      return res.status(403).json({
+        error: 'Forbidden',
+        message: 'You are not a member of this session'
+      });
+    }
+
+    // Check if deck already exists
+    if (sessionData.deck_seed) {
+      return res.status(400).json({
+        error: 'Deck already generated',
+        message: 'This session already has a deck. Use GET to retrieve it.'
+      });
+    }
+
+    const hostLat = sessionData.host_lat;
+    const hostLng = sessionData.host_lng;
+
+    // Fetch places from Google Places API
+    let places = await fetchPlacesFromGoogle(hostLat, hostLng, 5000); // 5km radius
+
+    // If less than 20 places, retry with larger radius
+    if (places.length < 20) {
+      console.log(`Only ${places.length} places found with 5km radius, expanding to 10km`);
+      places = await fetchPlacesFromGoogle(hostLat, hostLng, 10000); // 10km radius
+    }
+
+    // If still no results
+    if (places.length === 0) {
+      return res.status(404).json({
+        error: 'No places found',
+        message: 'No restaurants, bars, or cafes found in your area. Try a different location.'
+      });
+    }
+
+    // Normalize place data
+    const apiKey = process.env.GOOGLE_PLACES_API_KEY;
+    const normalizedPlaces = places.map(place =>
+      normalizePlace(place, hostLat, hostLng, apiKey)
+    );
+
+    // Limit to 25 places
+    const limitedPlaces = normalizedPlaces.slice(0, 25);
+
+    // Generate deck seed
+    const deckSeed = `${hostLat}_${hostLng}_${Date.now()}`;
+
+    // Shuffle places deterministically
+    const shuffledPlaces = shuffleWithSeed(limitedPlaces, deckSeed);
+
+    // Add order to each place
+    const deck = shuffledPlaces.map((place, index) => ({
+      ...place,
+      order: index
+    }));
+
+    // Update session with deck seed
+    await sessionRef.update({
+      deck_seed: deckSeed,
+      updated_at: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    // Store deck in subcollection
+    const batch = db.batch();
+    deck.forEach(place => {
+      const placeRef = sessionRef.collection('deck').doc(place.place_id);
+      batch.set(placeRef, place);
+    });
+    await batch.commit();
+
+    console.log(`✅ Generated deck with ${deck.length} places for session ${sessionId}`);
+
+    res.status(200).json({
+      session_id: sessionId,
+      deck: deck,
+      deck_seed: deckSeed,
+      total_count: deck.length
+    });
+  } catch (error) {
+    console.error('Error generating deck:', error);
+
+    // Check for specific error types
+    if (error.message.includes('GOOGLE_PLACES_API_KEY')) {
+      return res.status(500).json({
+        error: 'API configuration error',
+        message: 'Google Places API key is not configured'
+      });
+    }
+
+    if (error.response && error.response.status === 429) {
+      return res.status(429).json({
+        error: 'API quota exceeded',
+        message: 'Google Places API quota exceeded. Please try again later.'
+      });
+    }
+
+    res.status(500).json({
+      error: 'Failed to generate deck',
       message: error.message
     });
   }
