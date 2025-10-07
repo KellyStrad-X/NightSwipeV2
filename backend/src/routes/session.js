@@ -691,4 +691,239 @@ router.post('/session/:id/deck', verifyFirebaseToken, async (req, res) => {
   }
 });
 
+/**
+ * POST /session/:id/swipe
+ * Submit a swipe for a place
+ *
+ * Request Body:
+ * {
+ *   "place_id": string,
+ *   "direction": "left" | "right"
+ * }
+ *
+ * Response (200):
+ * {
+ *   "swipe_id": string,
+ *   "session_id": string,
+ *   "user_id": string,
+ *   "place_id": string,
+ *   "direction": string,
+ *   "swiped_at": timestamp
+ * }
+ */
+router.post('/session/:id/swipe', verifyFirebaseToken, async (req, res) => {
+  try {
+    const { id: sessionId } = req.params;
+    const { place_id, direction } = req.body;
+    const userId = req.user.uid;
+
+    // Validate input
+    if (!place_id || typeof place_id !== 'string') {
+      return res.status(400).json({
+        error: 'Invalid input',
+        message: 'place_id is required and must be a string'
+      });
+    }
+
+    if (!direction || !['left', 'right'].includes(direction)) {
+      return res.status(400).json({
+        error: 'Invalid direction',
+        message: 'direction must be "left" or "right"'
+      });
+    }
+
+    const db = getDb();
+    const sessionRef = db.collection('sessions').doc(sessionId);
+    const sessionDoc = await sessionRef.get();
+
+    // Check if session exists
+    if (!sessionDoc.exists) {
+      return res.status(404).json({
+        error: 'Session not found',
+        message: 'The session does not exist'
+      });
+    }
+
+    // Check if user is a member of this session
+    const memberDoc = await sessionRef.collection('session_members').doc(userId).get();
+    if (!memberDoc.exists) {
+      return res.status(403).json({
+        error: 'Forbidden',
+        message: 'You are not a member of this session'
+      });
+    }
+
+    // Validate place exists in deck
+    const placeDoc = await sessionRef.collection('deck').doc(place_id).get();
+    if (!placeDoc.exists) {
+      return res.status(400).json({
+        error: 'Invalid place',
+        message: 'place_id does not exist in this session\'s deck'
+      });
+    }
+
+    // Check for duplicate swipe (prevent re-swiping same card)
+    const existingSwipeQuery = await db.collection('swipes')
+      .where('session_id', '==', sessionId)
+      .where('user_id', '==', userId)
+      .where('place_id', '==', place_id)
+      .limit(1)
+      .get();
+
+    if (!existingSwipeQuery.empty) {
+      // Swipe already exists - return 409 Conflict
+      const existingSwipe = existingSwipeQuery.docs[0];
+      const existingData = existingSwipe.data();
+
+      return res.status(409).json({
+        error: 'Duplicate swipe',
+        message: 'You have already swiped on this place',
+        swipe: {
+          swipe_id: existingSwipe.id,
+          session_id: existingData.session_id,
+          user_id: existingData.user_id,
+          place_id: existingData.place_id,
+          direction: existingData.direction,
+          swiped_at: existingData.swiped_at
+        }
+      });
+    }
+
+    // Create swipe document
+    const swipeData = {
+      session_id: sessionId,
+      user_id: userId,
+      place_id: place_id,
+      direction: direction,
+      swiped_at: admin.firestore.FieldValue.serverTimestamp()
+    };
+
+    const swipeRef = await db.collection('swipes').add(swipeData);
+
+    console.log(`${direction === 'right' ? '♥' : '✗'} Swipe recorded: User ${userId} swiped ${direction} on ${place_id}`);
+
+    // Return swipe data with server timestamp
+    const createdSwipe = await swipeRef.get();
+    const createdData = createdSwipe.data();
+
+    res.status(200).json({
+      swipe_id: swipeRef.id,
+      session_id: createdData.session_id,
+      user_id: createdData.user_id,
+      place_id: createdData.place_id,
+      direction: createdData.direction,
+      swiped_at: createdData.swiped_at
+    });
+  } catch (error) {
+    console.error('Error submitting swipe:', error);
+    res.status(500).json({
+      error: 'Failed to submit swipe',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * GET /session/:id/status
+ * Get session completion status for all users
+ *
+ * Response (200):
+ * {
+ *   "session_id": string,
+ *   "status": "active" | "completed",
+ *   "users": [
+ *     {
+ *       "user_id": string,
+ *       "display_name": string,
+ *       "role": "host" | "guest",
+ *       "swipes_count": number,
+ *       "deck_size": number,
+ *       "finished": boolean
+ *     },
+ *     ...
+ *   ]
+ * }
+ */
+router.get('/session/:id/status', verifyFirebaseToken, async (req, res) => {
+  try {
+    const { id: sessionId } = req.params;
+    const userId = req.user.uid;
+
+    const db = getDb();
+    const sessionRef = db.collection('sessions').doc(sessionId);
+    const sessionDoc = await sessionRef.get();
+
+    // Check if session exists
+    if (!sessionDoc.exists) {
+      return res.status(404).json({
+        error: 'Session not found',
+        message: 'The session does not exist'
+      });
+    }
+
+    const sessionData = sessionDoc.data();
+
+    // Check if user is a member of this session
+    const memberDoc = await sessionRef.collection('session_members').doc(userId).get();
+    if (!memberDoc.exists) {
+      return res.status(403).json({
+        error: 'Forbidden',
+        message: 'You are not a member of this session'
+      });
+    }
+
+    // Get deck size
+    const deckSnapshot = await sessionRef.collection('deck').get();
+    const deckSize = deckSnapshot.size;
+
+    // Get all session members
+    const membersSnapshot = await sessionRef.collection('session_members').get();
+    const users = [];
+
+    for (const memberDoc of membersSnapshot.docs) {
+      const memberId = memberDoc.id;
+      const memberData = memberDoc.data();
+
+      // Get user profile
+      const userProfile = await db.collection('users').doc(memberId).get();
+
+      // Count user's swipes for this session
+      const swipesSnapshot = await db.collection('swipes')
+        .where('session_id', '==', sessionId)
+        .where('user_id', '==', memberId)
+        .get();
+
+      const swipesCount = swipesSnapshot.size;
+      const finished = swipesCount >= deckSize;
+
+      users.push({
+        user_id: memberId,
+        display_name: userProfile.data()?.display_name || 'Unknown',
+        role: memberData.role,
+        swipes_count: swipesCount,
+        deck_size: deckSize,
+        finished: finished
+      });
+    }
+
+    // Determine overall session status
+    const allFinished = users.every(u => u.finished);
+    const overallStatus = allFinished ? 'completed' : 'active';
+
+    console.log(`📊 Status for session ${sessionId}: ${users.map(u => `${u.display_name} (${u.swipes_count}/${u.deck_size})`).join(', ')}`);
+
+    res.status(200).json({
+      session_id: sessionId,
+      status: overallStatus,
+      users: users
+    });
+  } catch (error) {
+    console.error('Error getting session status:', error);
+    res.status(500).json({
+      error: 'Failed to get session status',
+      message: error.message
+    });
+  }
+});
+
 module.exports = router;

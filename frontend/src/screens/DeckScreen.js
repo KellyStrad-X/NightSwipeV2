@@ -35,6 +35,8 @@ export default function DeckScreen({ route, navigation }) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [sessionStatus, setSessionStatus] = useState(null);
+  const [polling, setPolling] = useState(false);
 
   const position = useRef(new Animated.ValueXY()).current;
   const swipeDirection = useRef(new Animated.Value(0)).current;
@@ -115,10 +117,12 @@ export default function DeckScreen({ route, navigation }) {
     setCurrentIndex(prevIndex => {
       const currentPlace = deck[prevIndex];
 
-      // Safely log the swipe
+      // Submit swipe to backend
       if (currentPlace) {
         console.log(`${direction === 'right' ? '♥' : '✗'} Swiped ${direction}:`, currentPlace.name);
-        // TODO: S-503 - Submit swipe to backend
+
+        // Optimistic UI - submit in background, don't wait for response
+        submitSwipe(currentPlace.place_id, direction);
       }
 
       return prevIndex + 1;
@@ -126,6 +130,108 @@ export default function DeckScreen({ route, navigation }) {
 
     position.setValue({ x: 0, y: 0 });
   };
+
+  const submitSwipe = async (placeId, direction) => {
+    try {
+      const response = await api.post(`/api/v1/session/${sessionId}/swipe`, {
+        place_id: placeId,
+        direction: direction
+      });
+      console.log('✅ Swipe submitted:', response.data);
+    } catch (err) {
+      // Handle duplicate swipes gracefully (409 is okay, means already swiped)
+      if (err.response?.status === 409) {
+        console.log('⚠️ Duplicate swipe detected (already swiped this card)');
+        return;
+      }
+
+      console.error('❌ Failed to submit swipe:', err);
+
+      // TODO: S-503 - Add retry queue for failed swipes
+      // For now, just log the error and continue
+      // In production, we'd queue this in AsyncStorage and retry later
+    }
+  };
+
+  // Fetch session status to check completion
+  const fetchSessionStatus = async () => {
+    try {
+      const response = await api.get(`/api/v1/session/${sessionId}/status`);
+      setSessionStatus(response.data);
+      console.log('📊 Session status:', response.data);
+      return response.data;
+    } catch (err) {
+      console.error('Failed to fetch session status:', err);
+      return null;
+    }
+  };
+
+  // Poll for completion when user finishes deck
+  useEffect(() => {
+    if (!polling) return;
+
+    const interval = setInterval(async () => {
+      const status = await fetchSessionStatus();
+
+      if (status && status.status === 'completed') {
+        // Both users finished
+        setPolling(false);
+        console.log('🎉 Both users completed! Navigating to results...');
+
+        // TODO: S-601/S-602 - Navigate to results/match screen
+        Alert.alert(
+          'All Done!',
+          'Both users have finished swiping. Match results coming soon!',
+          [{ text: 'OK', onPress: () => navigation.goBack() }]
+        );
+      }
+    }, 2000); // Poll every 2 seconds
+
+    return () => clearInterval(interval);
+  }, [polling, sessionId]);
+
+  // Start polling when user finishes deck
+  useEffect(() => {
+    if (currentIndex >= deck.length && deck.length > 0 && !polling) {
+      console.log('✅ User finished deck, checking status...');
+
+      // Fetch status to check if we're in solo or two-user mode
+      fetchSessionStatus().then(status => {
+        if (status) {
+          const userCount = status.users.length;
+
+          if (userCount === 1) {
+            // Solo mode - navigate directly to results
+            console.log('📱 Solo mode detected');
+            // TODO: S-601 - Navigate to solo results
+            Alert.alert(
+              'All Done!',
+              'You\'ve swiped through all cards. Results screen coming in S-601!',
+              [{ text: 'OK', onPress: () => navigation.goBack() }]
+            );
+          } else {
+            // Two-user mode - check if both finished
+            const allFinished = status.users.every(u => u.finished);
+
+            if (allFinished) {
+              // Both already finished
+              console.log('🎉 Both users already finished!');
+              // TODO: S-602 - Navigate to match results
+              Alert.alert(
+                'All Done!',
+                'Both users have finished swiping. Match results coming soon!',
+                [{ text: 'OK', onPress: () => navigation.goBack() }]
+              );
+            } else {
+              // Other user still swiping - start polling
+              console.log('⏳ Waiting for other user...');
+              setPolling(true);
+            }
+          }
+        }
+      });
+    }
+  }, [currentIndex, deck.length]);
 
   const resetPosition = () => {
     Animated.spring(position, {
@@ -319,7 +425,31 @@ export default function DeckScreen({ route, navigation }) {
   }
 
   if (currentIndex >= deck.length) {
-    // End of deck
+    // End of deck - show waiting screen if polling
+    if (polling && sessionStatus) {
+      const otherUser = sessionStatus.users.find(u => !u.finished);
+      return (
+        <SafeAreaView style={styles.container}>
+          <View style={styles.doneContainer}>
+            <ActivityIndicator size="large" color="#6200ee" style={{ marginBottom: 24 }} />
+            <Text style={styles.doneText}>Waiting for {otherUser?.display_name || 'other user'}...</Text>
+            <Text style={styles.doneSubtext}>
+              They're still swiping through the deck
+            </Text>
+            {sessionStatus.users.map(user => (
+              <View key={user.user_id} style={styles.userProgress}>
+                <Text style={styles.userProgressName}>{user.display_name}</Text>
+                <Text style={styles.userProgressCount}>
+                  {user.swipes_count} / {user.deck_size} {user.finished ? '✓' : '...'}
+                </Text>
+              </View>
+            ))}
+          </View>
+        </SafeAreaView>
+      );
+    }
+
+    // Default end screen (shouldn't show this anymore, but keep as fallback)
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.doneContainer}>
@@ -580,5 +710,26 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 18,
     fontWeight: '600',
+  },
+  userProgress: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#1a1a1a',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    marginTop: 12,
+    width: '80%',
+  },
+  userProgressName: {
+    fontSize: 16,
+    color: '#fff',
+    fontWeight: '600',
+  },
+  userProgressCount: {
+    fontSize: 14,
+    color: '#888',
+    fontFamily: 'monospace',
   },
 });
