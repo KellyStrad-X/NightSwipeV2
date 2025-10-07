@@ -31,6 +31,8 @@ const SWIPE_THRESHOLD = SCREEN_WIDTH * 0.4; // 40% of screen width
 export default function DeckScreen({ route, navigation }) {
   const { sessionId } = route.params;
 
+  console.log('🔵 DeckScreen loaded - NEW CODE v2');
+
   const [deck, setDeck] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -259,10 +261,12 @@ export default function DeckScreen({ route, navigation }) {
   };
 
   const handleSwipeLeft = () => {
+    console.log('🔴 Button: Swipe LEFT clicked');
     forceSwipe('left');
   };
 
   const handleSwipeRight = () => {
+    console.log('🟢 Button: Swipe RIGHT clicked');
     forceSwipe('right');
   };
 
