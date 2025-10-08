@@ -928,7 +928,7 @@ router.get('/session/:id/status', verifyFirebaseToken, async (req, res) => {
  *
  * Returns array of places that both users swiped right on
  */
-router.post('/:id/calculate-match', verifyFirebaseToken, async (req, res) => {
+router.post('/session/:id/calculate-match', verifyFirebaseToken, async (req, res) => {
   try {
     const sessionId = req.params.id;
     const userId = req.user.uid;
@@ -1020,7 +1020,7 @@ router.post('/:id/calculate-match', verifyFirebaseToken, async (req, res) => {
  * Track user confirmation for loading more places
  * When both users confirm, generate new deck and reset swipes
  */
-router.post('/:id/load-more-confirm', verifyFirebaseToken, async (req, res) => {
+router.post('/session/:id/load-more-confirm', verifyFirebaseToken, async (req, res) => {
   try {
     const sessionId = req.params.id;
     const userId = req.user.uid;

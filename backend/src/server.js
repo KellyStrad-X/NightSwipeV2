@@ -38,7 +38,9 @@ app.get('/api/v1', (req, res) => {
       deck_get: 'GET /api/v1/session/:id/deck (protected)',
       deck_create: 'POST /api/v1/session/:id/deck (protected)',
       swipe_submit: 'POST /api/v1/session/:id/swipe (protected)',
-      session_status: 'GET /api/v1/session/:id/status (protected)'
+      session_status: 'GET /api/v1/session/:id/status (protected)',
+      calculate_match: 'POST /api/v1/session/:id/calculate-match (protected)',
+      load_more_confirm: 'POST /api/v1/session/:id/load-more-confirm (protected)'
     }
   });
 });
