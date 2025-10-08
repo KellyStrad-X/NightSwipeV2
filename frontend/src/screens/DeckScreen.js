@@ -114,12 +114,16 @@ export default function DeckScreen({ route, navigation }) {
   ).current;
 
   const forceSwipe = (direction) => {
+    console.log(`🚀 forceSwipe called with direction: ${direction}`);
     const x = direction === 'right' ? SCREEN_WIDTH + 100 : -SCREEN_WIDTH - 100;
     Animated.timing(position, {
       toValue: { x, y: 0 },
       duration: 250,
       useNativeDriver: false,
-    }).start(() => onSwipeComplete(direction));
+    }).start((result) => {
+      console.log(`🎬 Animation completed, result:`, result);
+      onSwipeComplete(direction);
+    });
   };
 
   const onSwipeComplete = (direction) => {
