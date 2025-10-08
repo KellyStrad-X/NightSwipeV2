@@ -63,10 +63,19 @@ export default function DeckScreen({ route, navigation }) {
       const sortedDeck = deckResponse.data.deck.sort((a, b) => a.order - b.order);
       setDeck(sortedDeck);
 
-      // Generate random quota for solo mode (3-6 right swipes)
-      const randomQuota = Math.floor(Math.random() * 4) + 3; // 3-6
-      setQuota(randomQuota);
-      console.log('🎯 Solo quota set:', randomQuota, 'right swipes needed');
+      // Check if solo mode, and only set quota for solo sessions
+      const statusResponse = await api.get(`/api/v1/session/${sessionId}/status`);
+      const userCount = statusResponse.data.users.length;
+
+      if (userCount === 1) {
+        // Generate random quota for solo mode (3-6 right swipes)
+        const randomQuota = Math.floor(Math.random() * 4) + 3; // 3-6
+        setQuota(randomQuota);
+        console.log('🎯 Solo quota set:', randomQuota, 'right swipes needed');
+      } else {
+        // Two-user mode - no quota
+        console.log('👥 Two-user mode detected - no quota');
+      }
 
       setLoading(false);
       console.log('📚 Deck loaded:', sortedDeck.length, 'places');
@@ -153,22 +162,25 @@ export default function DeckScreen({ route, navigation }) {
 
   const submitSwipe = async (placeId, direction) => {
     try {
+      console.log(`📤 Submitting swipe: ${direction} for place ${placeId.substring(0, 8)}...`);
       await api.post(`/api/v1/session/${sessionId}/swipe`, {
         place_id: placeId,
         direction: direction
       });
 
+      console.log(`✅ Swipe submitted successfully`);
       // Increment counter when swipe successfully submitted
       setSubmittedSwipes(prev => prev + 1);
     } catch (err) {
       // Handle duplicate swipes gracefully (409 is okay, means already swiped)
       if (err.response?.status === 409) {
+        console.log(`⚠️ Duplicate swipe (already exists in backend)`);
         // Still count it as submitted since it exists in backend
         setSubmittedSwipes(prev => prev + 1);
         return;
       }
 
-      console.error('Failed to submit swipe:', err.response?.data?.message || err.message);
+      console.error('❌ Failed to submit swipe:', err.response?.data?.message || err.message);
 
       // TODO: S-503 - Add retry queue for failed swipes
       // For now, just log the error and continue
