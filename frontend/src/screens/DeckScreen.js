@@ -188,6 +188,37 @@ export default function DeckScreen({ route, navigation }) {
     }
   };
 
+  // Calculate match intersection for two-user mode
+  const calculateMatches = async () => {
+    try {
+      console.log('🎯 Calculating matches...');
+      const response = await api.post(`/api/v1/session/${sessionId}/calculate-match`);
+      const { match_count, matches } = response.data;
+
+      console.log(`✨ Match calculation complete: ${match_count} matches found`);
+
+      if (match_count > 0) {
+        // Navigate to MatchFound screen with matches
+        navigation.navigate('MatchFound', {
+          matches: matches,
+          sessionId: sessionId
+        });
+      } else {
+        // Navigate to NoMatch screen
+        navigation.navigate('NoMatch', {
+          sessionId: sessionId
+        });
+      }
+    } catch (err) {
+      console.error('Failed to calculate matches:', err);
+      Alert.alert(
+        'Error',
+        'Failed to calculate matches. Please try again.',
+        [{ text: 'OK', onPress: () => navigation.goBack() }]
+      );
+    }
+  };
+
   // Poll for completion when user finishes deck
   useEffect(() => {
     if (!polling) return;
@@ -198,13 +229,11 @@ export default function DeckScreen({ route, navigation }) {
       if (status && status.status === 'completed') {
         // Both users finished
         setPolling(false);
+        clearInterval(interval);
 
-        // TODO: S-601/S-602 - Navigate to results/match screen
-        Alert.alert(
-          'All Done!',
-          'Both users have finished swiping. Match results coming soon!',
-          [{ text: 'OK', onPress: () => navigation.goBack() }]
-        );
+        // Calculate matches and navigate
+        console.log('🎯 Polling detected both users finished! Calculating matches...');
+        calculateMatches();
       }
     }, 2000); // Poll every 2 seconds
 
@@ -245,13 +274,9 @@ export default function DeckScreen({ route, navigation }) {
             const allFinished = status.users.every(u => u.finished);
 
             if (allFinished) {
-              // Both already finished
-              // TODO: S-602 - Navigate to match results
-              Alert.alert(
-                'All Done!',
-                'Both users have finished swiping. Match results coming soon!',
-                [{ text: 'OK', onPress: () => navigation.goBack() }]
-              );
+              // Both finished - calculate matches
+              console.log('🎯 Both users finished! Calculating matches...');
+              calculateMatches();
             } else {
               // Other user still swiping - start polling
               setPolling(true);
