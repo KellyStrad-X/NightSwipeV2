@@ -1096,7 +1096,14 @@ router.post('/session/:id/load-more-confirm', verifyFirebaseToken, async (req, r
       const hostLng = sessionData.host_lng;
 
       // Fetch new places from Google Places API
-      const places = await fetchPlacesFromGoogle(hostLat, hostLng);
+      let places = await fetchPlacesFromGoogle(hostLat, hostLng, 5000); // 5km radius
+
+      // If less than 20 places, retry with larger radius
+      if (places.length < 20) {
+        console.log(`Only ${places.length} places found with 5km radius, expanding to 10km`);
+        places = await fetchPlacesFromGoogle(hostLat, hostLng, 10000); // 10km radius
+      }
+
       const normalizedPlaces = places.map(place => normalizePlace(place, hostLat, hostLng));
       const shuffledPlaces = shuffleWithSeed(normalizedPlaces, newSeed);
 

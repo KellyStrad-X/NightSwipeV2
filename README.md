@@ -29,8 +29,20 @@ NightSwipe helps a host and guest decide on a night out by swiping through curat
 
 ## Internal Docs
 
-- Restart briefs, sprint specs, and detailed logs are maintained under `Agents/` in the adjacent planning workspace.
-- For environment setup or historical implementation notes, reference `Agents/Claude-Codex/Logs/` and `Agents/Sprints/`.
+- Operating cadence:
+  - Claude (implementation agent) ships feature code; GPT-5 (release agent) reviews, stages, and pushes.
+  - Each working block starts with a restart-brief sync, followed by code review, light validation, and coordinated pushes from `Sprint_03_Implementations`.
+  - Commit hygiene: descriptive messages per story, no force-push; secrets stay on the host machine.
+- Planning workspace (`Agents/`):
+  - `Agents/Claude-Codex/Restart Brief/` → session priorities and checklists.
+  - `Agents/Claude-Codex/Logs/` → deep-dive writeups for each story and bug fix.
+  - `Agents/Sprints/` → backlog specs, acceptance criteria, and testing matrices.
+- VM + tooling:
+  - Development runs inside the Codex VM with sandboxed shell access; privileged commands require escalation.
+  - Backend/Expo services run locally; Google + Firebase keys are injected at runtime and never committed.
+- Git + security:
+  - GPT-5 handles staging and pushes; the host pulls, restarts services, and verifies environments after every drop.
+  - Unexpected binaries or obfuscated code are investigated before staging; `.env` and other secret files remain ignored.
 
 ---
 
