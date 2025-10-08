@@ -113,11 +113,42 @@ export default function HomeScreen({ navigation }) {
   };
 
   const handleStartBrowse = async () => {
-    const result = await requestLocation();
-    if (result.success) {
-      console.log('Location obtained:', result.location);
-      // TODO: S-501 - Fetch deck from Google Places API
-      console.log('Next: Fetch deck and navigate to swipe screen');
+    // Solo mode - create session without guest
+    const locationResult = await requestLocation();
+    if (!locationResult.success) {
+      console.log('❌ Location permission denied');
+      return;
+    }
+
+    console.log('✅ Location obtained:', locationResult.location);
+
+    try {
+      setCreatingSession(true);
+
+      // Create solo session
+      const sessionResponse = await api.post('/api/v1/session', {
+        host_lat: locationResult.location.lat,
+        host_lng: locationResult.location.lng
+      });
+
+      console.log('✅ Solo session created:', sessionResponse.data);
+
+      // Generate deck immediately
+      const deckResponse = await api.post(`/api/v1/session/${sessionResponse.data.session_id}/deck`);
+      console.log('✅ Deck generated:', deckResponse.data.total_count, 'places');
+
+      // Navigate directly to deck screen
+      navigation.navigate('Deck', {
+        sessionId: sessionResponse.data.session_id
+      });
+    } catch (error) {
+      console.error('❌ Failed to start solo browse:', error);
+      Alert.alert(
+        'Error',
+        error.response?.data?.message || 'Failed to start browsing. Please try again.'
+      );
+    } finally {
+      setCreatingSession(false);
     }
   };
 
@@ -203,12 +234,12 @@ export default function HomeScreen({ navigation }) {
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.primaryButton, locationLoading && styles.buttonDisabled]}
+              style={[styles.primaryButton, (locationLoading || creatingSession) && styles.buttonDisabled]}
               onPress={handleStartBrowse}
-              disabled={locationLoading}
+              disabled={locationLoading || creatingSession}
             >
               <Text style={styles.primaryButtonText}>
-                {locationLoading ? 'Getting Location...' : 'Start Browse'}
+                {creatingSession ? '⏳ Creating Session...' : locationLoading ? '📍 Getting Location...' : 'Start Browse'}
               </Text>
             </TouchableOpacity>
 
