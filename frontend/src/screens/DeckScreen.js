@@ -127,8 +127,11 @@ export default function DeckScreen({ route, navigation }) {
   };
 
   const onSwipeComplete = (direction) => {
+    console.log(`⭐ onSwipeComplete called with direction: ${direction}`);
+
     // Use functional update to avoid state closure issues
     setCurrentIndex(prevIndex => {
+      console.log(`📍 Current index: ${prevIndex}, deck length: ${deck.length}`);
       const currentPlace = deck[prevIndex];
 
       // Submit swipe to backend
@@ -137,12 +140,18 @@ export default function DeckScreen({ route, navigation }) {
 
         // Optimistic UI - submit in background, don't wait for response
         submitSwipe(currentPlace.place_id, direction);
+      } else {
+        console.log(`⚠️ No place found at index ${prevIndex}`);
       }
 
-      return prevIndex + 1;
+      const newIndex = prevIndex + 1;
+      console.log(`➕ Incrementing index: ${prevIndex} -> ${newIndex}`);
+      return newIndex;
     });
 
+    console.log(`🔄 Resetting position to 0,0`);
     position.setValue({ x: 0, y: 0 });
+    console.log(`✅ onSwipeComplete finished`);
   };
 
   const submitSwipe = async (placeId, direction) => {
