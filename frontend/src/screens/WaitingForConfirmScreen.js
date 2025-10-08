@@ -19,18 +19,28 @@ import api from '../services/api';
 export default function WaitingForConfirmScreen({ route, navigation }) {
   const { sessionId, confirmedUsers, totalUsers } = route.params;
   const [polling, setPolling] = useState(true);
+  const [initialLoadMoreCount, setInitialLoadMoreCount] = useState(null);
 
   useEffect(() => {
     let pollInterval;
 
     const checkConfirmationStatus = async () => {
       try {
-        // Call load-more-confirm again to get updated status
-        const response = await api.post(`/api/v1/session/${sessionId}/load-more-confirm`);
+        // Check session status to see if new deck is ready
+        const sessionResponse = await api.get(`/api/v1/session/${sessionId}`);
+        const sessionData = sessionResponse.data;
 
-        if (response.data.all_confirmed && response.data.new_deck_generated) {
-          // All users confirmed and new deck generated!
-          console.log('✨ New deck generated! Navigating to deck...');
+        // Store initial load_more_count on first poll
+        if (initialLoadMoreCount === null) {
+          setInitialLoadMoreCount(sessionData.load_more_count || 0);
+          return;
+        }
+
+        // Check if load_more_count increased (means new deck was generated)
+        const currentLoadMoreCount = sessionData.load_more_count || 0;
+        if (currentLoadMoreCount > initialLoadMoreCount) {
+          // New deck generated!
+          console.log('✨ New deck detected! Navigating to deck...');
           setPolling(false);
           clearInterval(pollInterval);
 
