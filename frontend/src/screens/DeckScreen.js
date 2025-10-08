@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -43,6 +43,12 @@ export default function DeckScreen({ route, navigation }) {
 
   const position = useRef(new Animated.ValueXY()).current;
   const swipeDirection = useRef(new Animated.Value(0)).current;
+  const deckRef = useRef(deck); // Keep ref to current deck
+
+  // Update ref when deck changes
+  useEffect(() => {
+    deckRef.current = deck;
+  }, [deck]);
 
   // Fetch deck from backend
   useEffect(() => {
@@ -126,13 +132,17 @@ export default function DeckScreen({ route, navigation }) {
     });
   };
 
-  const onSwipeComplete = (direction) => {
+  const onSwipeComplete = useCallback((direction) => {
     console.log(`⭐ onSwipeComplete called with direction: ${direction}`);
+
+    // Reset position immediately
+    position.setValue({ x: 0, y: 0 });
 
     // Use functional update to avoid state closure issues
     setCurrentIndex(prevIndex => {
-      console.log(`📍 Current index: ${prevIndex}, deck length: ${deck.length}`);
-      const currentPlace = deck[prevIndex];
+      const currentDeck = deckRef.current;
+      console.log(`📍 Current index: ${prevIndex}, deck length: ${currentDeck.length}`);
+      const currentPlace = currentDeck[prevIndex];
 
       // Submit swipe to backend
       if (currentPlace) {
@@ -141,7 +151,7 @@ export default function DeckScreen({ route, navigation }) {
         // Optimistic UI - submit in background, don't wait for response
         submitSwipe(currentPlace.place_id, direction);
       } else {
-        console.log(`⚠️ No place found at index ${prevIndex}`);
+        console.log(`⚠️ No place found at index ${prevIndex}, deck length: ${currentDeck.length}`);
       }
 
       const newIndex = prevIndex + 1;
@@ -149,10 +159,8 @@ export default function DeckScreen({ route, navigation }) {
       return newIndex;
     });
 
-    console.log(`🔄 Resetting position to 0,0`);
-    position.setValue({ x: 0, y: 0 });
     console.log(`✅ onSwipeComplete finished`);
-  };
+  }, [position]);
 
   const submitSwipe = async (placeId, direction) => {
     console.log(`📤 Submitting swipe for place ${placeId}...`);
