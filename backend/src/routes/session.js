@@ -800,8 +800,6 @@ router.post('/session/:id/swipe', verifyFirebaseToken, async (req, res) => {
 
     const swipeRef = await db.collection('swipes').add(swipeData);
 
-    console.log(`${direction === 'right' ? '♥' : '✗'} Swipe recorded: User ${userId} swiped ${direction} on ${place_id}`);
-
     // Return swipe data with server timestamp
     const createdSwipe = await swipeRef.get();
     const createdData = createdSwipe.data();
@@ -909,8 +907,6 @@ router.get('/session/:id/status', verifyFirebaseToken, async (req, res) => {
     // Determine overall session status
     const allFinished = users.every(u => u.finished);
     const overallStatus = allFinished ? 'completed' : 'active';
-
-    console.log(`📊 Status for session ${sessionId}: ${users.map(u => `${u.display_name} (${u.swipes_count}/${u.deck_size})`).join(', ')}`);
 
     res.status(200).json({
       session_id: sessionId,

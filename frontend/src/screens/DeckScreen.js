@@ -31,8 +31,6 @@ const SWIPE_THRESHOLD = SCREEN_WIDTH * 0.4; // 40% of screen width
 export default function DeckScreen({ route, navigation }) {
   const { sessionId } = route.params;
 
-  console.log('🔵 DeckScreen loaded - NEW CODE v2');
-
   const [deck, setDeck] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -40,6 +38,8 @@ export default function DeckScreen({ route, navigation }) {
   const [sessionStatus, setSessionStatus] = useState(null);
   const [polling, setPolling] = useState(false);
   const [submittedSwipes, setSubmittedSwipes] = useState(0); // Track completed swipe submissions
+  const [rightSwipes, setRightSwipes] = useState([]); // Track places swiped right
+  const [quota, setQuota] = useState(null); // Random quota for solo mode (3-6)
 
   const position = useRef(new Animated.ValueXY()).current;
   const swipeDirection = useRef(new Animated.Value(0)).current;
@@ -62,6 +62,12 @@ export default function DeckScreen({ route, navigation }) {
 
       const sortedDeck = deckResponse.data.deck.sort((a, b) => a.order - b.order);
       setDeck(sortedDeck);
+
+      // Generate random quota for solo mode (3-6 right swipes)
+      const randomQuota = Math.floor(Math.random() * 4) + 3; // 3-6
+      setQuota(randomQuota);
+      console.log('🎯 Solo quota set:', randomQuota, 'right swipes needed');
+
       setLoading(false);
       console.log('📚 Deck loaded:', sortedDeck.length, 'places');
     } catch (err) {
@@ -92,27 +98,20 @@ export default function DeckScreen({ route, navigation }) {
   // Create pan responder for gestures
   const panResponder = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => {
-        console.log('👆 Touch started on card');
-        return true;
-      },
+      onStartShouldSetPanResponder: () => true,
       onPanResponderMove: (evt, gesture) => {
         position.setValue({ x: gesture.dx, y: gesture.dy });
         swipeDirection.setValue(gesture.dx);
       },
       onPanResponderRelease: (evt, gesture) => {
-        console.log(`👋 Gesture released: dx=${gesture.dx}, threshold=${SWIPE_THRESHOLD}`);
         if (gesture.dx > SWIPE_THRESHOLD) {
           // Swipe right - Like
-          console.log('➡️ Detected RIGHT swipe');
           forceSwipe('right');
         } else if (gesture.dx < -SWIPE_THRESHOLD) {
           // Swipe left - Reject
-          console.log('⬅️ Detected LEFT swipe');
           forceSwipe('left');
         } else {
           // Spring back to center
-          console.log('↩️ Swipe too short, resetting position');
           resetPosition();
         }
       },
@@ -120,78 +119,56 @@ export default function DeckScreen({ route, navigation }) {
   ).current;
 
   const forceSwipe = (direction) => {
-    console.log(`🚀 forceSwipe called with direction: ${direction}`);
     const x = direction === 'right' ? SCREEN_WIDTH + 100 : -SCREEN_WIDTH - 100;
     Animated.timing(position, {
       toValue: { x, y: 0 },
       duration: 250,
       useNativeDriver: false,
-    }).start((result) => {
-      console.log(`🎬 Animation completed, result:`, result);
-      onSwipeComplete(direction);
-    });
+    }).start(() => onSwipeComplete(direction));
   };
 
   const onSwipeComplete = useCallback((direction) => {
-    console.log(`⭐ onSwipeComplete called with direction: ${direction}`);
-
     // Reset position immediately
     position.setValue({ x: 0, y: 0 });
 
     // Use functional update to avoid state closure issues
     setCurrentIndex(prevIndex => {
       const currentDeck = deckRef.current;
-      console.log(`📍 Current index: ${prevIndex}, deck length: ${currentDeck.length}`);
       const currentPlace = currentDeck[prevIndex];
 
       // Submit swipe to backend
       if (currentPlace) {
         console.log(`${direction === 'right' ? '♥' : '✗'} Swiped ${direction}:`, currentPlace.name);
-
-        // Optimistic UI - submit in background, don't wait for response
         submitSwipe(currentPlace.place_id, direction);
-      } else {
-        console.log(`⚠️ No place found at index ${prevIndex}, deck length: ${currentDeck.length}`);
+
+        // Track right swipes for solo mode
+        if (direction === 'right') {
+          setRightSwipes(prev => [...prev, currentPlace]);
+        }
       }
 
-      const newIndex = prevIndex + 1;
-      console.log(`➕ Incrementing index: ${prevIndex} -> ${newIndex}`);
-      return newIndex;
+      return prevIndex + 1;
     });
-
-    console.log(`✅ onSwipeComplete finished`);
   }, [position]);
 
   const submitSwipe = async (placeId, direction) => {
-    console.log(`📤 Submitting swipe for place ${placeId}...`);
     try {
-      const response = await api.post(`/api/v1/session/${sessionId}/swipe`, {
+      await api.post(`/api/v1/session/${sessionId}/swipe`, {
         place_id: placeId,
         direction: direction
       });
-      console.log('✅ Swipe submitted successfully:', response.data);
 
       // Increment counter when swipe successfully submitted
-      setSubmittedSwipes(prev => {
-        const newCount = prev + 1;
-        console.log(`📊 Swipe count: ${prev} -> ${newCount}`);
-        return newCount;
-      });
+      setSubmittedSwipes(prev => prev + 1);
     } catch (err) {
       // Handle duplicate swipes gracefully (409 is okay, means already swiped)
       if (err.response?.status === 409) {
-        console.log('⚠️ Duplicate swipe detected (already swiped this card)');
         // Still count it as submitted since it exists in backend
-        setSubmittedSwipes(prev => {
-          const newCount = prev + 1;
-          console.log(`📊 Swipe count (duplicate): ${prev} -> ${newCount}`);
-          return newCount;
-        });
+        setSubmittedSwipes(prev => prev + 1);
         return;
       }
 
-      console.error('❌ Failed to submit swipe:', err);
-      console.error('Error details:', err.response?.data || err.message);
+      console.error('Failed to submit swipe:', err.response?.data?.message || err.message);
 
       // TODO: S-503 - Add retry queue for failed swipes
       // For now, just log the error and continue
@@ -204,7 +181,6 @@ export default function DeckScreen({ route, navigation }) {
     try {
       const response = await api.get(`/api/v1/session/${sessionId}/status`);
       setSessionStatus(response.data);
-      console.log('📊 Session status:', response.data);
       return response.data;
     } catch (err) {
       console.error('Failed to fetch session status:', err);
@@ -222,7 +198,6 @@ export default function DeckScreen({ route, navigation }) {
       if (status && status.status === 'completed') {
         // Both users finished
         setPolling(false);
-        console.log('🎉 Both users completed! Navigating to results...');
 
         // TODO: S-601/S-602 - Navigate to results/match screen
         Alert.alert(
@@ -236,33 +211,41 @@ export default function DeckScreen({ route, navigation }) {
     return () => clearInterval(interval);
   }, [polling, sessionId]);
 
-  // Check for completion when all swipes are submitted
+  // Check for quota completion (solo mode)
+  useEffect(() => {
+    if (quota && rightSwipes.length >= quota && !polling) {
+      // Quota met! Navigate to results
+      console.log(`🎯 Quota met! ${rightSwipes.length}/${quota} right swipes`);
+      navigation.navigate('Results', {
+        likedPlaces: rightSwipes,
+        sessionId: sessionId
+      });
+    }
+  }, [rightSwipes.length, quota]);
+
+  // Check for completion when all swipes are submitted (end of deck)
   useEffect(() => {
     // Only proceed if we've swiped all cards AND all swipes have been submitted
     if (currentIndex >= deck.length && submittedSwipes >= deck.length && deck.length > 0 && !polling) {
-      console.log(`✅ User finished deck and all ${submittedSwipes} swipes submitted, checking status...`);
-
       // Fetch status to check if we're in solo or two-user mode
       fetchSessionStatus().then(status => {
         if (status) {
           const userCount = status.users.length;
 
           if (userCount === 1) {
-            // Solo mode - navigate directly to results
-            console.log('📱 Solo mode detected');
-            // TODO: S-601 - Navigate to solo results
-            Alert.alert(
-              'All Done!',
-              'You\'ve swiped through all cards. Results screen coming in S-601!',
-              [{ text: 'OK', onPress: () => navigation.goBack() }]
-            );
+            // Solo mode - reached end of deck without meeting quota
+            // Show all right swipes anyway
+            console.log(`📚 End of deck: ${rightSwipes.length} right swipes`);
+            navigation.navigate('Results', {
+              likedPlaces: rightSwipes,
+              sessionId: sessionId
+            });
           } else {
             // Two-user mode - check if both finished
             const allFinished = status.users.every(u => u.finished);
 
             if (allFinished) {
               // Both already finished
-              console.log('🎉 Both users already finished!');
               // TODO: S-602 - Navigate to match results
               Alert.alert(
                 'All Done!',
@@ -271,7 +254,6 @@ export default function DeckScreen({ route, navigation }) {
               );
             } else {
               // Other user still swiping - start polling
-              console.log('⏳ Waiting for other user...');
               setPolling(true);
             }
           }
@@ -289,12 +271,10 @@ export default function DeckScreen({ route, navigation }) {
   };
 
   const handleSwipeLeft = () => {
-    console.log('🔴 Button: Swipe LEFT clicked');
     forceSwipe('left');
   };
 
   const handleSwipeRight = () => {
-    console.log('🟢 Button: Swipe RIGHT clicked');
     forceSwipe('right');
   };
 
