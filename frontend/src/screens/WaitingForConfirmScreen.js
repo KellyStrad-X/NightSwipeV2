@@ -30,8 +30,14 @@ export default function WaitingForConfirmScreen({ route, navigation }) {
         const sessionResponse = await api.get(`/api/v1/session/${sessionId}`);
         const sessionData = sessionResponse.data;
 
+        console.log('⏳ Polling load-more status:', {
+          current: sessionData.load_more_count,
+          initial: initialLoadMoreCount
+        });
+
         // Store initial load_more_count on first poll
         if (initialLoadMoreCount === null) {
+          console.log('📊 Setting initial load_more_count:', sessionData.load_more_count || 0);
           setInitialLoadMoreCount(sessionData.load_more_count || 0);
           return;
         }
@@ -55,7 +61,7 @@ export default function WaitingForConfirmScreen({ route, navigation }) {
           });
         }
       } catch (error) {
-        console.error('Error checking confirmation status:', error);
+        console.error('❌ Error checking confirmation status:', error);
       }
     };
 
@@ -69,7 +75,7 @@ export default function WaitingForConfirmScreen({ route, navigation }) {
     return () => {
       clearInterval(pollInterval);
     };
-  }, [sessionId, navigation]);
+  }, [sessionId, navigation, initialLoadMoreCount]);
 
   const remainingUsers = totalUsers - confirmedUsers;
 

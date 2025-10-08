@@ -457,7 +457,9 @@ router.get('/session/:id', verifyFirebaseToken, async (req, res) => {
       host_location: {
         lat: sessionData.host_lat,
         lng: sessionData.host_lng
-      }
+      },
+      load_more_count: sessionData.load_more_count || 0,
+      matches_calculated: sessionData.matches_calculated || false
     });
   } catch (error) {
     console.error('Error getting session:', error);
@@ -1104,7 +1106,9 @@ router.post('/session/:id/load-more-confirm', verifyFirebaseToken, async (req, r
         places = await fetchPlacesFromGoogle(hostLat, hostLng, 10000); // 10km radius
       }
 
-      const normalizedPlaces = places.map(place => normalizePlace(place, hostLat, hostLng));
+      // Normalize place data with API key for photo URLs
+      const apiKey = process.env.GOOGLE_PLACES_API_KEY;
+      const normalizedPlaces = places.map(place => normalizePlace(place, hostLat, hostLng, apiKey));
       const shuffledPlaces = shuffleWithSeed(normalizedPlaces, newSeed);
 
       // Store new deck in Firestore
