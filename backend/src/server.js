@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const { initializeFirebase } = require('./config/firebase');
 const { verifyFirebaseToken } = require('./middleware/auth');
+const sessionRoutes = require('./routes/session');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -30,8 +31,16 @@ app.get('/api/v1', (req, res) => {
     endpoints: {
       health: '/health',
       profile: '/api/v1/profile (protected)',
-      session: '/api/v1/session (coming soon)',
-      places: '/api/v1/places (coming soon)'
+      session_create: 'POST /api/v1/session (protected)',
+      session_join: 'POST /api/v1/session/:id/join (protected)',
+      session_get: 'GET /api/v1/session/:id (protected)',
+      session_by_code: 'GET /api/v1/session/by-code/:code (protected)',
+      deck_get: 'GET /api/v1/session/:id/deck (protected)',
+      deck_create: 'POST /api/v1/session/:id/deck (protected)',
+      swipe_submit: 'POST /api/v1/session/:id/swipe (protected)',
+      session_status: 'GET /api/v1/session/:id/status (protected)',
+      calculate_match: 'POST /api/v1/session/:id/calculate-match (protected)',
+      load_more_confirm: 'POST /api/v1/session/:id/load-more-confirm (protected)'
     }
   });
 });
@@ -47,6 +56,9 @@ app.get('/api/v1/profile', verifyFirebaseToken, (req, res) => {
     }
   });
 });
+
+// Session routes
+app.use('/api/v1', sessionRoutes);
 
 // 404 handler
 app.use((req, res) => {
