@@ -48,7 +48,7 @@ const linking = {
 };
 
 function Navigation() {
-  const { currentUser, loading, pendingJoinCode } = useAuth();
+  const { currentUser, loading, pendingJoinCode, userProfile } = useAuth();
   const navigationRef = useRef();
 
   // DEV HELPER: Expose deep link trigger to global scope for testing
@@ -256,26 +256,21 @@ function Navigation() {
           contentStyle: { backgroundColor: '#0a0a0a' },
         }}
       >
-        {currentUser ? (
-          // User is authenticated - show app screens
-          <>
-            <Stack.Screen name="Home" component={HomeScreen} />
-            <Stack.Screen name="Lobby" component={LobbyScreen} />
-            <Stack.Screen name="Deck" component={DeckScreen} />
-            <Stack.Screen name="Results" component={ResultsScreen} />
-            <Stack.Screen name="Match" component={MatchScreen} />
-            <Stack.Screen name="MatchFound" component={MatchFoundScreen} />
-            <Stack.Screen name="NoMatch" component={NoMatchScreen} />
-            <Stack.Screen name="WaitingForConfirm" component={WaitingForConfirmScreen} />
-            <Stack.Screen name="WaitingForRestart" component={WaitingForRestartScreen} />
-          </>
-        ) : (
-          // User is not authenticated - show auth screens
-          <>
-            <Stack.Screen name="Login" component={LoginScreen} />
-            <Stack.Screen name="Register" component={RegisterScreen} />
-          </>
-        )}
+        {/* Home screen is now universal - shows for logged in AND logged out users */}
+        <Stack.Screen name="Home" component={HomeScreen} />
+
+        {/* App screens - only accessible when logged in */}
+        <Stack.Screen name="Lobby" component={LobbyScreen} />
+        <Stack.Screen name="Deck" component={DeckScreen} />
+        <Stack.Screen name="Results" component={ResultsScreen} />
+        <Stack.Screen name="Match" component={MatchScreen} />
+        <Stack.Screen name="MatchFound" component={MatchFoundScreen} />
+        <Stack.Screen name="NoMatch" component={NoMatchScreen} />
+        <Stack.Screen name="WaitingForConfirm" component={WaitingForConfirmScreen} />
+        <Stack.Screen name="WaitingForRestart" component={WaitingForRestartScreen} />
+
+        {/* Keep auth screens for registration flow */}
+        <Stack.Screen name="Register" component={RegisterScreen} />
       </Stack.Navigator>
       <StatusBar style="light" />
       <OfflineBanner />
@@ -534,9 +529,9 @@ const styles = StyleSheet.create({
   },
   breathingGlow: {
     position: 'absolute',
-    width: width * 0.6,
-    height: width * 0.6,
-    borderRadius: (width * 0.6) / 2,
+    width: width * 0.4,
+    height: width * 0.4,
+    borderRadius: (width * 0.4) / 2,
     backgroundColor: 'rgba(98, 0, 238, 0.2)',
     shadowColor: '#6200ee',
     shadowOffset: { width: 0, height: 0 },

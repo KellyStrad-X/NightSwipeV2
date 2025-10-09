@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,7 +9,10 @@ import {
   StatusBar,
   Alert,
   Image,
-  Dimensions
+  Dimensions,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform
 } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import { useLocation } from '../context/LocationContext';
@@ -20,49 +23,93 @@ import api from '../services/api';
 const { width } = Dimensions.get('window');
 
 /**
- * HomeScreen - Main authenticated home screen
+ * HomeScreen - Universal home screen for all users
  *
  * Features:
+ * - S-801: Logo slide-up animation after splash completes
+ * - Shows inline login form for logged-out users
+ * - Shows full app interface for logged-in users
+ * - User status indicator with blue/red icons
  * - S-301: Animated logo and CTAs based on user state
  * - S-302: Location permission integration
- * - S-203: Auth gate for invite actions (this screen is auth-only)
  * - S-402: Invite flow with modal and session creation
- *
- * Note: This screen is only accessible to authenticated users.
- * Deep link handling for guest joins is in App.js
- * Splash animation is handled in App.js
  */
 export default function HomeScreen({ navigation }) {
-  const { currentUser, userProfile, logout } = useAuth();
+  const { currentUser, userProfile, logout, login } = useAuth();
   const { requestLocation, loading: locationLoading } = useLocation();
   const [expanded, setExpanded] = useState(false);
   const [inviteModalVisible, setInviteModalVisible] = useState(false);
   const [sessionData, setSessionData] = useState(null);
   const [creatingSession, setCreatingSession] = useState(false);
+  const [showLoginForm, setShowLoginForm] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loginLoading, setLoginLoading] = useState(false);
 
   // Animation values
   const logoPosition = useRef(new Animated.Value(0)).current;
-  const buttonsOpacity = useRef(new Animated.Value(0)).current;
+  const contentOpacity = useRef(new Animated.Value(0)).current;
+
+  // Run entry animation when screen mounts
+  useEffect(() => {
+    // Small delay to let splash finish cleanly
+    setTimeout(() => {
+      Animated.parallel([
+        // Logo slides up
+        Animated.timing(logoPosition, {
+          toValue: 1,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+        // Content fades in
+        Animated.timing(contentOpacity, {
+          toValue: 1,
+          duration: 600,
+          delay: 400,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }, 200);
+  }, []);
 
   const handleStartSearching = () => {
+    // Check if user is logged in
+    if (!currentUser) {
+      Alert.alert('Login Required', 'You need to be logged in to start searching!');
+      return;
+    }
+
     if (expanded) return; // Already expanded
-
     setExpanded(true);
+  };
 
-    // Animate logo slide up and buttons fade in
-    Animated.parallel([
-      Animated.timing(logoPosition, {
-        toValue: 1,
-        duration: 350,
-        useNativeDriver: true,
-      }),
-      Animated.timing(buttonsOpacity, {
-        toValue: 1,
-        duration: 300,
-        delay: 150,
-        useNativeDriver: true,
-      }),
-    ]).start();
+  const handleLoginPress = () => {
+    setShowLoginForm(!showLoginForm);
+  };
+
+  const handleLogin = async () => {
+    if (!email || !password) {
+      Alert.alert('Error', 'Please enter email and password');
+      return;
+    }
+
+    try {
+      setLoginLoading(true);
+      await login(email, password);
+      // Login successful - reset form
+      setEmail('');
+      setPassword('');
+      setShowLoginForm(false);
+    } catch (error) {
+      console.error('Login error:', error);
+      Alert.alert('Login Failed', error.message || 'Invalid email or password');
+    } finally {
+      setLoginLoading(false);
+    }
+  };
+
+  const handleRegister = () => {
+    navigation.navigate('Register');
   };
 
   const handleInvite = async () => {
@@ -163,108 +210,171 @@ export default function HomeScreen({ navigation }) {
     await testDeepLinkFlow(testCode, !!currentUser);
   };
 
-  // Calculate logo position (center to top)
+  // Calculate logo position (center to slightly up)
   const logoTranslateY = logoPosition.interpolate({
     inputRange: [0, 1],
-    outputRange: [0, -200], // Slide up 200px
+    outputRange: [0, -150], // Slide up 150px
   });
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" />
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    >
+      <SafeAreaView style={styles.container}>
+        <StatusBar barStyle="light-content" />
 
-      {/* Header with username */}
-      <View style={styles.header}>
-        <Text style={styles.username}>
-          {userProfile?.display_name || 'User'}
-        </Text>
-        <View style={styles.headerButtons}>
-          {__DEV__ && (
-            <TouchableOpacity onPress={handleTestDeepLink} style={styles.devButton}>
-              <Text style={styles.devButtonText}>🧪 Test Link</Text>
+        {/* Dev/logout buttons in top right */}
+        {currentUser && (
+          <View style={styles.topRightButtons}>
+            {__DEV__ && (
+              <TouchableOpacity onPress={handleTestDeepLink} style={styles.devButton}>
+                <Text style={styles.devButtonText}>🧪 Test Link</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity onPress={logout} style={styles.logoutButton}>
+              <Text style={styles.logoutText}>↪</Text>
             </TouchableOpacity>
-          )}
-          <TouchableOpacity onPress={logout} style={styles.logoutIcon}>
-            <Text style={styles.logoutText}>↪</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* Main content area */}
-      <View style={styles.content}>
-        {/* Logo with animation */}
-        <Animated.View
-          style={[
-            styles.logoContainer,
-            {
-              transform: [{ translateY: logoTranslateY }],
-            },
-          ]}
-        >
-          <Image
-            source={require('../../assets/logo-crescent.png')}
-            style={styles.logoImage}
-            resizeMode="contain"
-          />
-        </Animated.View>
-
-        {/* Initial CTA - Start Searching */}
-        {!expanded && (
-          <View style={styles.ctaContainer}>
-            <TouchableOpacity
-              style={styles.primaryButton}
-              onPress={handleStartSearching}
-            >
-              <Text style={styles.primaryButtonText}>Start Searching</Text>
-            </TouchableOpacity>
-            <Text style={styles.hint}>Find places to explore together</Text>
           </View>
         )}
 
-        {/* Expanded buttons - Invite and Start Browse */}
-        {expanded && (
+        {/* Main content area */}
+        <View style={styles.content}>
+          {/* Logo with slide-up animation */}
           <Animated.View
             style={[
-              styles.expandedButtons,
-              { opacity: buttonsOpacity },
+              styles.logoContainer,
+              {
+                transform: [{ translateY: logoTranslateY }],
+              },
             ]}
           >
-            <TouchableOpacity
-              style={[styles.secondaryButton, (locationLoading || creatingSession) && styles.buttonDisabled]}
-              onPress={handleInvite}
-              disabled={locationLoading || creatingSession}
-            >
-              <Text style={styles.secondaryButtonText}>
-                {creatingSession ? '⏳ Creating Session...' : locationLoading ? '📍 Getting Location...' : '📤 Invite Someone'}
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.primaryButton, (locationLoading || creatingSession) && styles.buttonDisabled]}
-              onPress={handleStartBrowse}
-              disabled={locationLoading || creatingSession}
-            >
-              <Text style={styles.primaryButtonText}>
-                {creatingSession ? '⏳ Creating Session...' : locationLoading ? '📍 Getting Location...' : 'Start Browse'}
-              </Text>
-            </TouchableOpacity>
-
-            <Text style={styles.expandedHint}>
-              Swipe together or invite a friend
-            </Text>
+            <Image
+              source={require('../../assets/logo-crescent.png')}
+              style={styles.logoImage}
+              resizeMode="contain"
+            />
           </Animated.View>
-        )}
-      </View>
 
-      {/* S-402: Invite Modal */}
-      <InviteModal
-        visible={inviteModalVisible}
-        onClose={() => setInviteModalVisible(false)}
-        onInviteSent={handleInviteSent}
-        sessionData={sessionData}
-        hostProfile={userProfile}
-      />
-    </SafeAreaView>
+          {/* Content that fades in */}
+          <Animated.View style={[styles.buttonsContainer, { opacity: contentOpacity }]}>
+            {/* Start Searching Button */}
+            {!expanded && !showLoginForm && (
+              <TouchableOpacity
+                style={styles.primaryButton}
+                onPress={handleStartSearching}
+              >
+                <Text style={styles.primaryButtonText}>Start Searching</Text>
+              </TouchableOpacity>
+            )}
+
+            {/* User Status Indicator */}
+            {!expanded && !showLoginForm && (
+              <TouchableOpacity
+                style={styles.userStatus}
+                onPress={currentUser ? null : handleLoginPress}
+                disabled={!!currentUser}
+              >
+                <Image
+                  source={
+                    currentUser
+                      ? require('../../assets/user.blue.icon.png')
+                      : require('../../assets/user.red.icon.png')
+                  }
+                  style={styles.userIcon}
+                  resizeMode="contain"
+                />
+                <Text style={[styles.userStatusText, currentUser && styles.userStatusTextBlue]}>
+                  {currentUser ? (userProfile?.display_name || 'User') : 'log in'}
+                </Text>
+              </TouchableOpacity>
+            )}
+
+            {/* Inline Login Form */}
+            {showLoginForm && (
+              <View style={styles.loginForm}>
+                <Text style={styles.loginFormTitle}>Welcome Back</Text>
+
+                <TextInput
+                  style={styles.input}
+                  placeholder="Email"
+                  placeholderTextColor="#666"
+                  value={email}
+                  onChangeText={setEmail}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                />
+
+                <TextInput
+                  style={styles.input}
+                  placeholder="Password"
+                  placeholderTextColor="#666"
+                  value={password}
+                  onChangeText={setPassword}
+                  secureTextEntry
+                />
+
+                <TouchableOpacity
+                  style={[styles.primaryButton, loginLoading && styles.buttonDisabled]}
+                  onPress={handleLogin}
+                  disabled={loginLoading}
+                >
+                  <Text style={styles.primaryButtonText}>
+                    {loginLoading ? 'Logging in...' : 'Log In'}
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity onPress={handleRegister} style={styles.linkButton}>
+                  <Text style={styles.linkText}>Don't have an account? Register</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity onPress={() => setShowLoginForm(false)} style={styles.linkButton}>
+                  <Text style={styles.linkText}>Cancel</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {/* Expanded buttons - Invite and Start Browse (Logged In) */}
+            {expanded && currentUser && (
+              <View style={styles.expandedButtons}>
+                <TouchableOpacity
+                  style={[styles.secondaryButton, (locationLoading || creatingSession) && styles.buttonDisabled]}
+                  onPress={handleInvite}
+                  disabled={locationLoading || creatingSession}
+                >
+                  <Text style={styles.secondaryButtonText}>
+                    {creatingSession ? '⏳ Creating Session...' : locationLoading ? '📍 Getting Location...' : '📤 Invite Someone'}
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.primaryButton, (locationLoading || creatingSession) && styles.buttonDisabled]}
+                  onPress={handleStartBrowse}
+                  disabled={locationLoading || creatingSession}
+                >
+                  <Text style={styles.primaryButtonText}>
+                    {creatingSession ? '⏳ Creating Session...' : locationLoading ? '📍 Getting Location...' : 'Start Browse'}
+                  </Text>
+                </TouchableOpacity>
+
+                <Text style={styles.expandedHint}>
+                  Swipe together or invite a friend
+                </Text>
+              </View>
+            )}
+          </Animated.View>
+        </View>
+
+        {/* S-402: Invite Modal */}
+        <InviteModal
+          visible={inviteModalVisible}
+          onClose={() => setInviteModalVisible(false)}
+          onInviteSent={handleInviteSent}
+          sessionData={sessionData}
+          hostProfile={userProfile}
+        />
+      </SafeAreaView>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -273,22 +383,14 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#0a0a0a',
   },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingVertical: 16,
-  },
-  username: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#fff',
-  },
-  headerButtons: {
+  topRightButtons: {
+    position: 'absolute',
+    top: 50,
+    right: 20,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    zIndex: 10,
   },
   devButton: {
     backgroundColor: '#ff6b00',
@@ -301,7 +403,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
-  logoutIcon: {
+  logoutButton: {
     padding: 8,
   },
   logoutText: {
@@ -316,15 +418,16 @@ const styles = StyleSheet.create({
   },
   logoContainer: {
     alignItems: 'center',
-    marginBottom: 60,
+    marginBottom: 80,
   },
   logoImage: {
     width: width * 0.65,
     height: width * 0.25,
   },
-  ctaContainer: {
+  buttonsContainer: {
     width: '100%',
     alignItems: 'center',
+    gap: 20,
   },
   primaryButton: {
     backgroundColor: '#6200ee',
@@ -345,6 +448,55 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
   },
+  userStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 20,
+  },
+  userIcon: {
+    width: 32,
+    height: 32,
+  },
+  userStatusText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#ff4444',
+  },
+  userStatusTextBlue: {
+    color: '#4af',
+  },
+  loginForm: {
+    width: '100%',
+    maxWidth: 320,
+    gap: 16,
+  },
+  loginFormTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#fff',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  input: {
+    backgroundColor: '#1a1a2e',
+    borderRadius: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    fontSize: 16,
+    color: '#fff',
+    borderWidth: 1,
+    borderColor: '#333',
+  },
+  linkButton: {
+    paddingVertical: 8,
+    alignItems: 'center',
+  },
+  linkText: {
+    color: '#6200ee',
+    fontSize: 14,
+    fontWeight: '600',
+  },
   secondaryButton: {
     backgroundColor: '#1a1a2e',
     borderWidth: 2,
@@ -361,12 +513,6 @@ const styles = StyleSheet.create({
     color: '#6200ee',
     fontSize: 16,
     fontWeight: '600',
-  },
-  hint: {
-    color: '#888',
-    fontSize: 14,
-    marginTop: 16,
-    textAlign: 'center',
   },
   expandedButtons: {
     width: '100%',
