@@ -457,7 +457,9 @@ router.get('/session/:id', verifyFirebaseToken, async (req, res) => {
       host_location: {
         lat: sessionData.host_lat,
         lng: sessionData.host_lng
-      }
+      },
+      load_more_count: sessionData.load_more_count || 0,
+      matches_calculated: sessionData.matches_calculated || false
     });
   } catch (error) {
     console.error('Error getting session:', error);
@@ -800,8 +802,6 @@ router.post('/session/:id/swipe', verifyFirebaseToken, async (req, res) => {
 
     const swipeRef = await db.collection('swipes').add(swipeData);
 
-    console.log(`${direction === 'right' ? '♥' : '✗'} Swipe recorded: User ${userId} swiped ${direction} on ${place_id}`);
-
     // Return swipe data with server timestamp
     const createdSwipe = await swipeRef.get();
     const createdData = createdSwipe.data();
@@ -910,8 +910,6 @@ router.get('/session/:id/status', verifyFirebaseToken, async (req, res) => {
     const allFinished = users.every(u => u.finished);
     const overallStatus = allFinished ? 'completed' : 'active';
 
-    console.log(`📊 Status for session ${sessionId}: ${users.map(u => `${u.display_name} (${u.swipes_count}/${u.deck_size})`).join(', ')}`);
-
     res.status(200).json({
       session_id: sessionId,
       status: overallStatus,
@@ -921,6 +919,243 @@ router.get('/session/:id/status', verifyFirebaseToken, async (req, res) => {
     console.error('Error getting session status:', error);
     res.status(500).json({
       error: 'Failed to get session status',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * POST /session/:id/calculate-match
+ * Calculate match intersection for two-user session
+ *
+ * Returns array of places that both users swiped right on
+ */
+router.post('/session/:id/calculate-match', verifyFirebaseToken, async (req, res) => {
+  try {
+    const sessionId = req.params.id;
+    const userId = req.user.uid;
+    const db = getDb();
+    const sessionRef = db.collection('sessions').doc(sessionId);
+    const sessionDoc = await sessionRef.get();
+
+    // Check if session exists
+    if (!sessionDoc.exists) {
+      return res.status(404).json({
+        error: 'Session not found',
+        message: 'The session does not exist'
+      });
+    }
+
+    // Check if user is a member of this session
+    const memberDoc = await sessionRef.collection('session_members').doc(userId).get();
+    if (!memberDoc.exists) {
+      return res.status(403).json({
+        error: 'Forbidden',
+        message: 'You are not a member of this session'
+      });
+    }
+
+    // Get all right swipes for this session
+    const swipesSnapshot = await db.collection('swipes')
+      .where('session_id', '==', sessionId)
+      .where('direction', '==', 'right')
+      .get();
+
+    // Count swipes per place_id and track which users swiped right
+    const placeSwipes = {}; // { place_id: Set<user_id> }
+
+    swipesSnapshot.forEach(doc => {
+      const { place_id, user_id } = doc.data();
+      if (!placeSwipes[place_id]) {
+        placeSwipes[place_id] = new Set();
+      }
+      placeSwipes[place_id].add(user_id);
+    });
+
+    // Get all session members to determine how many users we need
+    const membersSnapshot = await sessionRef.collection('session_members').get();
+    const memberCount = membersSnapshot.size;
+
+    // Find places that ALL users swiped right on (intersection)
+    const matchedPlaceIds = Object.entries(placeSwipes)
+      .filter(([_, userSet]) => userSet.size === memberCount)
+      .map(([place_id]) => place_id);
+
+    console.log(`🎯 Match calculation: ${matchedPlaceIds.length} matches found for session ${sessionId}`);
+
+    // Fetch full place data for matched places
+    const matchedPlaces = [];
+    for (const placeId of matchedPlaceIds) {
+      const placeDoc = await sessionRef.collection('deck').doc(placeId).get();
+      if (placeDoc.exists) {
+        matchedPlaces.push({
+          place_id: placeId,
+          ...placeDoc.data()
+        });
+      }
+    }
+
+    // Store match results in session document
+    await sessionRef.update({
+      matches_calculated: true,
+      match_count: matchedPlaces.length,
+      matched_place_ids: matchedPlaceIds,
+      calculated_at: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    res.status(200).json({
+      session_id: sessionId,
+      match_count: matchedPlaces.length,
+      matches: matchedPlaces
+    });
+  } catch (error) {
+    console.error('Error calculating matches:', error);
+    res.status(500).json({
+      error: 'Failed to calculate matches',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * POST /session/:id/load-more-confirm
+ * Track user confirmation for loading more places
+ * When both users confirm, generate new deck and reset swipes
+ */
+router.post('/session/:id/load-more-confirm', verifyFirebaseToken, async (req, res) => {
+  try {
+    const sessionId = req.params.id;
+    const userId = req.user.uid;
+    const db = getDb();
+    const sessionRef = db.collection('sessions').doc(sessionId);
+    const sessionDoc = await sessionRef.get();
+
+    // Check if session exists
+    if (!sessionDoc.exists) {
+      return res.status(404).json({
+        error: 'Session not found',
+        message: 'The session does not exist'
+      });
+    }
+
+    const sessionData = sessionDoc.data();
+
+    // Check if user is a member of this session
+    const memberDoc = await sessionRef.collection('session_members').doc(userId).get();
+    if (!memberDoc.exists) {
+      return res.status(403).json({
+        error: 'Forbidden',
+        message: 'You are not a member of this session'
+      });
+    }
+
+    // Initialize load_more_confirmations if it doesn't exist
+    let confirmations = sessionData.load_more_confirmations || [];
+
+    // Add user to confirmations if not already present
+    if (!confirmations.includes(userId)) {
+      confirmations.push(userId);
+      await sessionRef.update({
+        load_more_confirmations: confirmations
+      });
+      console.log(`✅ User ${userId} confirmed load-more for session ${sessionId}`);
+    }
+
+    // Get all session members
+    const membersSnapshot = await sessionRef.collection('session_members').get();
+    const memberCount = membersSnapshot.size;
+
+    // Check if all users have confirmed
+    const allConfirmed = confirmations.length >= memberCount;
+
+    if (allConfirmed) {
+      console.log(`🔄 All users confirmed load-more for session ${sessionId}. Generating new deck...`);
+
+      // Delete old swipes
+      const swipesSnapshot = await db.collection('swipes')
+        .where('session_id', '==', sessionId)
+        .get();
+
+      const deleteBatch = db.batch();
+      swipesSnapshot.forEach(doc => {
+        deleteBatch.delete(doc.ref);
+      });
+      await deleteBatch.commit();
+      console.log(`🗑️ Deleted ${swipesSnapshot.size} old swipes`);
+
+      // Delete old deck
+      const deckSnapshot = await sessionRef.collection('deck').get();
+      const deckDeleteBatch = db.batch();
+      deckSnapshot.forEach(doc => {
+        deckDeleteBatch.delete(doc.ref);
+      });
+      await deckDeleteBatch.commit();
+      console.log(`🗑️ Deleted ${deckSnapshot.size} old deck cards`);
+
+      // Generate new deck with different seed
+      const newSeed = `${sessionId}-${Date.now()}`; // Different seed for new deck
+      const hostLat = sessionData.host_lat;
+      const hostLng = sessionData.host_lng;
+
+      // Fetch new places from Google Places API
+      let places = await fetchPlacesFromGoogle(hostLat, hostLng, 5000); // 5km radius
+
+      // If less than 20 places, retry with larger radius
+      if (places.length < 20) {
+        console.log(`Only ${places.length} places found with 5km radius, expanding to 10km`);
+        places = await fetchPlacesFromGoogle(hostLat, hostLng, 10000); // 10km radius
+      }
+
+      // Normalize place data with API key for photo URLs
+      const apiKey = process.env.GOOGLE_PLACES_API_KEY;
+      const normalizedPlaces = places.map(place => normalizePlace(place, hostLat, hostLng, apiKey));
+      const shuffledPlaces = shuffleWithSeed(normalizedPlaces, newSeed);
+
+      // Store new deck in Firestore
+      const deckBatch = db.batch();
+      shuffledPlaces.forEach((place) => {
+        const placeRef = sessionRef.collection('deck').doc(place.place_id);
+        deckBatch.set(placeRef, place);
+      });
+      await deckBatch.commit();
+
+      // Reset session state
+      await sessionRef.update({
+        deck_seed: newSeed,
+        deck_generated_at: admin.firestore.FieldValue.serverTimestamp(),
+        matches_calculated: false,
+        match_count: 0,
+        matched_place_ids: [],
+        load_more_confirmations: [],
+        load_more_count: (sessionData.load_more_count || 0) + 1
+      });
+
+      console.log(`✨ New deck generated with ${shuffledPlaces.length} places for session ${sessionId}`);
+
+      res.status(200).json({
+        session_id: sessionId,
+        all_confirmed: true,
+        new_deck_generated: true,
+        deck_size: shuffledPlaces.length,
+        message: 'New deck generated. Ready to swipe again!'
+      });
+    } else {
+      // Not all users confirmed yet
+      const remainingCount = memberCount - confirmations.length;
+
+      res.status(200).json({
+        session_id: sessionId,
+        all_confirmed: false,
+        confirmed_users: confirmations.length,
+        total_users: memberCount,
+        remaining: remainingCount,
+        message: `Waiting for ${remainingCount} more user(s) to confirm`
+      });
+    }
+  } catch (error) {
+    console.error('Error handling load-more confirmation:', error);
+    res.status(500).json({
+      error: 'Failed to handle load-more confirmation',
       message: error.message
     });
   }

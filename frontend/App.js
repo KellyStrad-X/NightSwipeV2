@@ -12,6 +12,11 @@ import RegisterScreen from './src/screens/RegisterScreen';
 import HomeScreen from './src/screens/HomeScreen';
 import LobbyScreen from './src/screens/LobbyScreen';
 import DeckScreen from './src/screens/DeckScreen';
+import ResultsScreen from './src/screens/ResultsScreen';
+import MatchScreen from './src/screens/MatchScreen';
+import MatchFoundScreen from './src/screens/MatchFoundScreen';
+import NoMatchScreen from './src/screens/NoMatchScreen';
+import WaitingForConfirmScreen from './src/screens/WaitingForConfirmScreen';
 import { storePendingJoinCode } from './src/utils/deepLinkStorage';
 import api from './src/services/api';
 
@@ -250,6 +255,11 @@ function Navigation() {
             <Stack.Screen name="Home" component={HomeScreen} />
             <Stack.Screen name="Lobby" component={LobbyScreen} />
             <Stack.Screen name="Deck" component={DeckScreen} />
+            <Stack.Screen name="Results" component={ResultsScreen} />
+            <Stack.Screen name="Match" component={MatchScreen} />
+            <Stack.Screen name="MatchFound" component={MatchFoundScreen} />
+            <Stack.Screen name="NoMatch" component={NoMatchScreen} />
+            <Stack.Screen name="WaitingForConfirm" component={WaitingForConfirmScreen} />
           </>
         ) : (
           // User is not authenticated - show auth screens
