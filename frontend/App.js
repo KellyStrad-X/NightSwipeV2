@@ -4,9 +4,11 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
 import { View, ActivityIndicator, StyleSheet, Alert } from 'react-native';
 import * as Linking from 'expo-linking';
+import Toast from 'react-native-toast-message';
 
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { LocationProvider } from './src/context/LocationContext';
+import OfflineBanner from './src/components/OfflineBanner';
 import LoginScreen from './src/screens/LoginScreen';
 import RegisterScreen from './src/screens/RegisterScreen';
 import HomeScreen from './src/screens/HomeScreen';
@@ -272,6 +274,8 @@ function Navigation() {
         )}
       </Stack.Navigator>
       <StatusBar style="light" />
+      <OfflineBanner />
+      <Toast />
     </NavigationContainer>
   );
 }
