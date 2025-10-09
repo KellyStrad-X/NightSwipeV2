@@ -12,7 +12,11 @@ import {
   Alert,
   Image
 } from 'react-native';
+import Toast from 'react-native-toast-message';
 import api from '../services/api';
+import ErrorModal from '../components/ErrorModal';
+import retryQueue from '../utils/retryQueue';
+import { parseError, retryWithBackoff } from '../utils/errorHandler';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const SWIPE_THRESHOLD = SCREEN_WIDTH * 0.4; // 40% of screen width
@@ -40,6 +44,8 @@ export default function DeckScreen({ route, navigation }) {
   const [submittedSwipes, setSubmittedSwipes] = useState(0); // Track completed swipe submissions
   const [rightSwipes, setRightSwipes] = useState([]); // Track places swiped right
   const [quota, setQuota] = useState(null); // Random quota for solo mode (3-6)
+  const [showErrorModal, setShowErrorModal] = useState(false);
+  const [errorModalConfig, setErrorModalConfig] = useState({});
 
   const position = useRef(new Animated.ValueXY()).current;
   const swipeDirection = useRef(new Animated.Value(0)).current;
@@ -57,8 +63,10 @@ export default function DeckScreen({ route, navigation }) {
 
   const fetchDeck = async (retryCount = 0) => {
     try {
-      // Fetch the deck from backend
-      const deckResponse = await api.get(`/api/v1/session/${sessionId}/deck`);
+      // Fetch the deck from backend with retry logic
+      const deckResponse = await retryWithBackoff(() =>
+        api.get(`/api/v1/session/${sessionId}/deck`)
+      );
 
       const sortedDeck = deckResponse.data.deck.sort((a, b) => a.order - b.order);
       setDeck(sortedDeck);
@@ -81,26 +89,29 @@ export default function DeckScreen({ route, navigation }) {
       console.log('📚 Deck loaded:', sortedDeck.length, 'places');
     } catch (err) {
       console.error('Failed to fetch deck:', err);
+      const errorInfo = parseError(err);
 
-      // If 404 and we haven't retried yet, wait and retry (Firestore consistency)
-      if (err.response?.status === 404 && retryCount < 3) {
-        console.log(`🔄 Deck not ready yet, retrying in ${500 * (retryCount + 1)}ms... (attempt ${retryCount + 1}/3)`);
-        setTimeout(() => {
-          fetchDeck(retryCount + 1);
-        }, 500 * (retryCount + 1)); // Progressive backoff: 500ms, 1s, 1.5s
-        return;
-      }
-
-      if (err.response?.status === 404) {
-        Alert.alert(
-          'No Deck',
-          'Deck has not been generated yet. Please go back and generate it first.',
-          [{ text: 'OK', onPress: () => navigation.goBack() }]
-        );
-      } else {
-        setError(err.response?.data?.message || 'Failed to load deck');
-      }
       setLoading(false);
+
+      // Show error modal with retry option
+      setErrorModalConfig({
+        title: 'Failed to Load Deck',
+        message: errorInfo.message,
+        onRetry: errorInfo.shouldRetry ? () => {
+          setShowErrorModal(false);
+          setLoading(true);
+          fetchDeck();
+        } : null,
+        onDismiss: () => {
+          setShowErrorModal(false);
+          if (errorInfo.shouldRedirect) {
+            navigation.navigate(errorInfo.shouldRedirect);
+          } else {
+            navigation.goBack();
+          }
+        }
+      });
+      setShowErrorModal(true);
     }
   };
 
@@ -172,6 +183,8 @@ export default function DeckScreen({ route, navigation }) {
       // Increment counter when swipe successfully submitted
       setSubmittedSwipes(prev => prev + 1);
     } catch (err) {
+      const errorInfo = parseError(err);
+
       // Handle duplicate swipes gracefully (409 is okay, means already swiped)
       if (err.response?.status === 409) {
         console.log(`⚠️ Duplicate swipe (already exists in backend)`);
@@ -182,9 +195,37 @@ export default function DeckScreen({ route, navigation }) {
 
       console.error('❌ Failed to submit swipe:', err.response?.data?.message || err.message);
 
-      // TODO: S-503 - Add retry queue for failed swipes
-      // For now, just log the error and continue
-      // In production, we'd queue this in AsyncStorage and retry later
+      // S-901: Queue failed swipe for retry
+      if (errorInfo.shouldRetry) {
+        console.log('📥 Adding swipe to retry queue');
+        await retryQueue.add({
+          url: `/api/v1/session/${sessionId}/swipe`,
+          method: 'POST',
+          data: {
+            place_id: placeId,
+            direction: direction
+          }
+        });
+
+        // Show toast notification
+        Toast.show({
+          type: 'info',
+          text1: 'Swipe Queued',
+          text2: 'Will retry when connection is restored',
+          visibilityTime: 2000
+        });
+
+        // Still count it as submitted for UI purposes
+        setSubmittedSwipes(prev => prev + 1);
+      } else {
+        // Non-retryable error - show toast
+        Toast.show({
+          type: 'error',
+          text1: 'Swipe Failed',
+          text2: errorInfo.message,
+          visibilityTime: 3000
+        });
+      }
     }
   };
 
@@ -572,6 +613,16 @@ export default function DeckScreen({ route, navigation }) {
           <Text style={styles.buttonText}>♥</Text>
         </TouchableOpacity>
       </View>
+
+      {/* Error Modal */}
+      <ErrorModal
+        visible={showErrorModal}
+        title={errorModalConfig.title}
+        message={errorModalConfig.message}
+        onRetry={errorModalConfig.onRetry}
+        onDismiss={errorModalConfig.onDismiss}
+        dismissText={errorModalConfig.onRetry ? 'Cancel' : 'OK'}
+      />
     </SafeAreaView>
   );
 }

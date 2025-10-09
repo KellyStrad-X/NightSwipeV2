@@ -138,7 +138,13 @@ const normalizePlace = (place, hostLat, hostLng, apiKey) => {
     rating: place.rating || null,
     review_count: place.user_ratings_total || 0,
     address: place.vicinity || place.formatted_address || 'Address not available',
-    distance_km: Math.round(distance * 10) / 10 // Round to 1 decimal
+    distance_km: Math.round(distance * 10) / 10, // Round to 1 decimal
+    geometry: {
+      location: {
+        lat: place.geometry.location.lat,
+        lng: place.geometry.location.lng
+      }
+    }
   };
 };
 
@@ -459,6 +465,7 @@ router.get('/session/:id', verifyFirebaseToken, async (req, res) => {
         lng: sessionData.host_lng
       },
       load_more_count: sessionData.load_more_count || 0,
+      restart_count: sessionData.restart_count || 0,
       matches_calculated: sessionData.matches_calculated || false
     });
   } catch (error) {
@@ -1012,6 +1019,159 @@ router.post('/session/:id/calculate-match', verifyFirebaseToken, async (req, res
     console.error('Error calculating matches:', error);
     res.status(500).json({
       error: 'Failed to calculate matches',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * POST /session/:id/restart
+ * Restart session with new deck
+ * Solo mode: Generates new deck immediately
+ * Two-user mode: Tracks confirmations, generates when all confirm
+ */
+router.post('/session/:id/restart', verifyFirebaseToken, async (req, res) => {
+  try {
+    const sessionId = req.params.id;
+    const userId = req.user.uid;
+    const db = getDb();
+    const sessionRef = db.collection('sessions').doc(sessionId);
+    const sessionDoc = await sessionRef.get();
+
+    // Check if session exists
+    if (!sessionDoc.exists) {
+      return res.status(404).json({
+        error: 'Session not found',
+        message: 'The session does not exist'
+      });
+    }
+
+    const sessionData = sessionDoc.data();
+
+    // Check if user is a member of this session
+    const memberDoc = await sessionRef.collection('session_members').doc(userId).get();
+    if (!memberDoc.exists) {
+      return res.status(403).json({
+        error: 'Forbidden',
+        message: 'You are not a member of this session'
+      });
+    }
+
+    // Initialize restart_confirmations if it doesn't exist
+    let confirmations = sessionData.restart_confirmations || [];
+
+    // Add user to confirmations if not already present
+    if (!confirmations.includes(userId)) {
+      confirmations.push(userId);
+      await sessionRef.update({
+        restart_confirmations: confirmations
+      });
+      console.log(`✅ User ${userId} confirmed restart for session ${sessionId}`);
+    }
+
+    // Get all session members
+    const membersSnapshot = await sessionRef.collection('session_members').get();
+    const memberCount = membersSnapshot.size;
+
+    // Check if all users have confirmed
+    const allConfirmed = confirmations.length >= memberCount;
+
+    if (allConfirmed) {
+      console.log(`🔄 All users confirmed restart for session ${sessionId}. Generating new deck...`);
+
+      // Delete old swipes
+      const swipesSnapshot = await db.collection('swipes')
+        .where('session_id', '==', sessionId)
+        .get();
+
+      const deleteBatch = db.batch();
+      swipesSnapshot.forEach(doc => {
+        deleteBatch.delete(doc.ref);
+      });
+      await deleteBatch.commit();
+      console.log(`🗑️ Deleted ${swipesSnapshot.size} old swipes`);
+
+      // Delete old deck
+      const deckSnapshot = await sessionRef.collection('deck').get();
+      const deckDeleteBatch = db.batch();
+      deckSnapshot.forEach(doc => {
+        deckDeleteBatch.delete(doc.ref);
+      });
+      await deckDeleteBatch.commit();
+      console.log(`🗑️ Deleted ${deckSnapshot.size} old deck cards`);
+
+      // Generate new deck with different seed
+      const newSeed = `${sessionId}-restart-${Date.now()}`;
+      const hostLat = sessionData.host_lat;
+      const hostLng = sessionData.host_lng;
+
+      // Fetch new places from Google Places API
+      let places = await fetchPlacesFromGoogle(hostLat, hostLng, 5000); // 5km radius
+
+      // If less than 20 places, retry with larger radius
+      if (places.length < 20) {
+        console.log(`Only ${places.length} places found with 5km radius, expanding to 10km`);
+        places = await fetchPlacesFromGoogle(hostLat, hostLng, 10000); // 10km radius
+      }
+
+      // Normalize place data with API key for photo URLs
+      const apiKey = process.env.GOOGLE_PLACES_API_KEY;
+      const normalizedPlaces = places.map(place => normalizePlace(place, hostLat, hostLng, apiKey));
+      const limitedPlaces = normalizedPlaces.slice(0, 25);
+      const shuffledPlaces = shuffleWithSeed(limitedPlaces, newSeed);
+
+      // Add order to each place
+      const deck = shuffledPlaces.map((place, index) => ({
+        ...place,
+        order: index
+      }));
+
+      // Store new deck in Firestore
+      const deckBatch = db.batch();
+      deck.forEach((place) => {
+        const placeRef = sessionRef.collection('deck').doc(place.place_id);
+        deckBatch.set(placeRef, place);
+      });
+      await deckBatch.commit();
+
+      // Reset session state
+      await sessionRef.update({
+        deck_seed: newSeed,
+        deck_generated_at: admin.firestore.FieldValue.serverTimestamp(),
+        matches_calculated: false,
+        match_count: 0,
+        matched_place_ids: [],
+        restart_confirmations: [],
+        restart_count: (sessionData.restart_count || 0) + 1
+      });
+
+      console.log(`✨ New deck generated with ${deck.length} places for session ${sessionId} (restart)`);
+
+      res.status(200).json({
+        session_id: sessionId,
+        all_confirmed: true,
+        new_deck_generated: true,
+        deck_size: deck.length,
+        restart_count: (sessionData.restart_count || 0) + 1,
+        message: 'Session restarted. Ready to swipe again!'
+      });
+    } else {
+      // Not all users confirmed yet
+      const remainingCount = memberCount - confirmations.length;
+
+      res.status(200).json({
+        session_id: sessionId,
+        all_confirmed: false,
+        confirmed_users: confirmations.length,
+        total_users: memberCount,
+        remaining: remainingCount,
+        message: `Waiting for ${remainingCount} more user(s) to confirm restart`
+      });
+    }
+  } catch (error) {
+    console.error('Error handling restart:', error);
+    res.status(500).json({
+      error: 'Failed to restart session',
       message: error.message
     });
   }
