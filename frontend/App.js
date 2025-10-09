@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
@@ -12,7 +12,6 @@ import OfflineBanner from './src/components/OfflineBanner';
 import LoginScreen from './src/screens/LoginScreen';
 import RegisterScreen from './src/screens/RegisterScreen';
 import HomeScreen from './src/screens/HomeScreen';
-import SplashScreen from './src/screens/SplashScreen';
 import LobbyScreen from './src/screens/LobbyScreen';
 import DeckScreen from './src/screens/DeckScreen';
 import ResultsScreen from './src/screens/ResultsScreen';
@@ -282,17 +281,6 @@ function Navigation() {
 }
 
 export default function App() {
-  const [showSplash, setShowSplash] = useState(true);
-
-  const handleSplashFinish = () => {
-    setShowSplash(false);
-  };
-
-  // Show splash screen on app launch
-  if (showSplash) {
-    return <SplashScreen onFinish={handleSplashFinish} />;
-  }
-
   return (
     <AuthProvider>
       <LocationProvider>
