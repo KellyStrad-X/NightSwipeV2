@@ -14,6 +14,7 @@ import {
   KeyboardAvoidingView,
   Platform
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../context/AuthContext';
 import { useLocation } from '../context/LocationContext';
 import { testDeepLinkFlow } from '../utils/testDeepLink';
@@ -225,18 +226,29 @@ export default function HomeScreen({ navigation }) {
         <StatusBar barStyle="light-content" />
 
         {/* Dev/logout buttons in top right */}
-        {currentUser && (
-          <View style={styles.topRightButtons}>
-            {__DEV__ && (
+        <View style={styles.topRightButtons}>
+          {__DEV__ && (
+            <>
               <TouchableOpacity onPress={handleTestDeepLink} style={styles.devButton}>
                 <Text style={styles.devButtonText}>🧪 Test Link</Text>
               </TouchableOpacity>
-            )}
+              <TouchableOpacity
+                onPress={async () => {
+                  await AsyncStorage.removeItem('@nightswipe_last_close');
+                  Alert.alert('Done', 'Force-close the app and reopen for cold start');
+                }}
+                style={[styles.devButton, { backgroundColor: '#0066ff' }]}
+              >
+                <Text style={styles.devButtonText}>❄️ Cold Start</Text>
+              </TouchableOpacity>
+            </>
+          )}
+          {currentUser && (
             <TouchableOpacity onPress={logout} style={styles.logoutButton}>
               <Text style={styles.logoutText}>↪</Text>
             </TouchableOpacity>
-          </View>
-        )}
+          )}
+        </View>
 
         {/* Main content area */}
         <View style={styles.content}>

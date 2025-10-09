@@ -301,20 +301,24 @@ export default function App() {
         const lastCloseTime = await AsyncStorage.getItem(LAST_CLOSE_KEY);
         const now = Date.now();
 
+        console.log('🔍 [DEBUG] Last close time from storage:', lastCloseTime);
+        console.log('🔍 [DEBUG] Current time:', now);
+
         if (lastCloseTime) {
           const timeSinceClose = now - parseInt(lastCloseTime, 10);
           warmStart = timeSinceClose < WARM_START_THRESHOLD;
           setIsWarmStart(warmStart);
           console.log(`🚀 ${warmStart ? 'Warm' : 'Cold'} start detected (${Math.round(timeSinceClose / 1000)}s since close)`);
         } else {
-          console.log('🚀 First launch - Cold start');
+          console.log('🚀 First launch - Cold start (no previous close time)');
           setIsWarmStart(false);
         }
       } catch (error) {
-        console.error('Error checking start type:', error);
+        console.error('❌ Error checking start type:', error);
         setIsWarmStart(false);
       }
 
+      console.log('🎬 [DEBUG] Starting splash animation - warmStart:', warmStart);
       // Start splash animation after detection
       setTimeout(() => startSplashAnimation(warmStart), 100);
     };
@@ -334,7 +338,10 @@ export default function App() {
   }, []);
 
   const startSplashAnimation = (isWarm) => {
+    console.log('🎭 [DEBUG] Animation starting - isWarm:', isWarm);
+
     if (isWarm) {
+      console.log('⚡ Running WARM start animation');
       // Warm start: Quick logo fade-in
       Animated.sequence([
         Animated.timing(crescentOpacity, {
@@ -347,6 +354,7 @@ export default function App() {
         setShowSplash(false);
       });
     } else {
+      console.log('❄️ Running COLD start animation (full moon sequence)');
       // Cold start: Full animation sequence
       Animated.sequence([
         // 1. Moon fades in SLOWLY (1.2s)
