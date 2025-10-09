@@ -17,6 +17,7 @@ import MatchScreen from './src/screens/MatchScreen';
 import MatchFoundScreen from './src/screens/MatchFoundScreen';
 import NoMatchScreen from './src/screens/NoMatchScreen';
 import WaitingForConfirmScreen from './src/screens/WaitingForConfirmScreen';
+import WaitingForRestartScreen from './src/screens/WaitingForRestartScreen';
 import { storePendingJoinCode } from './src/utils/deepLinkStorage';
 import api from './src/services/api';
 
@@ -260,6 +261,7 @@ function Navigation() {
             <Stack.Screen name="MatchFound" component={MatchFoundScreen} />
             <Stack.Screen name="NoMatch" component={NoMatchScreen} />
             <Stack.Screen name="WaitingForConfirm" component={WaitingForConfirmScreen} />
+            <Stack.Screen name="WaitingForRestart" component={WaitingForRestartScreen} />
           </>
         ) : (
           // User is not authenticated - show auth screens

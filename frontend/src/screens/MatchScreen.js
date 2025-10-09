@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -9,11 +9,13 @@ import {
   ScrollView,
   Alert,
   Linking,
-  Platform
+  Platform,
+  ActivityIndicator
 } from 'react-native';
+import api from '../services/api';
 
 /**
- * MatchScreen - S-601, S-701
+ * MatchScreen - S-601, S-701, S-702
  *
  * Shows full details of a matched place
  * - Large photo
@@ -21,11 +23,12 @@ import {
  * - Full address
  * - Distance
  * - "Maps Link" button (S-701 ✅ Opens Apple/Google Maps)
- * - "Restart" button (S-702 will implement deck refresh)
+ * - "Restart" button (S-702 ✅ Session restart with deck refresh)
  * - Back button
  */
 export default function MatchScreen({ route, navigation }) {
-  const { place } = route.params;
+  const { place, sessionId } = route.params;
+  const [loading, setLoading] = useState(false);
 
   const handleMapsLink = async () => {
     // S-701: Open Apple/Google Maps with place location
@@ -65,13 +68,61 @@ export default function MatchScreen({ route, navigation }) {
     }
   };
 
-  const handleRestart = () => {
-    // TODO: S-702 - Generate new deck and restart session
-    Alert.alert(
-      'Restart Session',
-      'Deck refresh coming in S-702!',
-      [{ text: 'OK' }]
-    );
+  const handleRestart = async () => {
+    // S-702: Restart session with new deck
+    if (!sessionId) {
+      Alert.alert('Error', 'Session ID not found. Cannot restart.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      console.log('🔄 Requesting session restart...');
+      const response = await api.post(`/api/v1/session/${sessionId}/restart`);
+      const data = response.data;
+
+      if (data.all_confirmed) {
+        // Solo mode OR both users confirmed - new deck generated
+        console.log('✅ Session restarted! Navigating to new deck...');
+        Alert.alert(
+          'Session Restarted!',
+          'A new deck has been generated. Ready to swipe again!',
+          [
+            {
+              text: 'Start Swiping',
+              onPress: () => {
+                // Navigate to deck with fresh state
+                navigation.reset({
+                  index: 0,
+                  routes: [
+                    { name: 'Home' },
+                    { name: 'Lobby', params: { sessionId } },
+                    { name: 'Deck', params: { sessionId } }
+                  ]
+                });
+              }
+            }
+          ]
+        );
+      } else {
+        // Two-user mode - waiting for other user
+        console.log('⏳ Waiting for other user to confirm restart...');
+        navigation.navigate('WaitingForRestart', {
+          sessionId,
+          confirmedUsers: data.confirmed_users,
+          totalUsers: data.total_users
+        });
+      }
+    } catch (error) {
+      console.error('❌ Error restarting session:', error);
+      Alert.alert(
+        'Error',
+        error.response?.data?.message || 'Could not restart session. Please try again.',
+        [{ text: 'OK' }]
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -145,10 +196,15 @@ export default function MatchScreen({ route, navigation }) {
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={styles.restartButton}
+              style={[styles.restartButton, loading && styles.buttonDisabled]}
               onPress={handleRestart}
+              disabled={loading}
             >
-              <Text style={styles.restartButtonText}>🔄 Restart</Text>
+              {loading ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.restartButtonText}>🔄 Restart</Text>
+              )}
             </TouchableOpacity>
           </View>
 
@@ -285,6 +341,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     borderRadius: 12,
     alignItems: 'center',
+  },
+  buttonDisabled: {
+    opacity: 0.5,
   },
   restartButtonText: {
     color: '#fff',
