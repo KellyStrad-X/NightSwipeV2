@@ -7,31 +7,62 @@ import {
   TouchableOpacity,
   Image,
   ScrollView,
-  Alert
+  Alert,
+  Linking,
+  Platform
 } from 'react-native';
 
 /**
- * MatchScreen - S-601
+ * MatchScreen - S-601, S-701
  *
  * Shows full details of a matched place
  * - Large photo
  * - Name, category, rating, reviews
  * - Full address
  * - Distance
- * - "Maps Link" button (S-701 will implement opening maps)
+ * - "Maps Link" button (S-701 ✅ Opens Apple/Google Maps)
  * - "Restart" button (S-702 will implement deck refresh)
  * - Back button
  */
 export default function MatchScreen({ route, navigation }) {
   const { place } = route.params;
 
-  const handleMapsLink = () => {
-    // TODO: S-701 - Open Apple/Google Maps with place location
-    Alert.alert(
-      'Maps Link',
-      'Deep link to maps coming in S-701!',
-      [{ text: 'OK' }]
-    );
+  const handleMapsLink = async () => {
+    // S-701: Open Apple/Google Maps with place location
+    try {
+      const { name, geometry } = place;
+      const { lat, lng } = geometry.location;
+      const encodedName = encodeURIComponent(name);
+
+      // Platform-specific native maps URLs
+      const url = Platform.select({
+        ios: `maps:///?q=${encodedName}&ll=${lat},${lng}`,
+        android: `geo:${lat},${lng}?q=${encodedName}`,
+        default: `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`
+      });
+
+      // Check if native maps app can be opened
+      const supported = await Linking.canOpenURL(url);
+
+      if (supported) {
+        await Linking.openURL(url);
+      } else {
+        // Web fallback if native app not available
+        const webUrl = Platform.select({
+          ios: `https://maps.apple.com/?q=${encodedName}&ll=${lat},${lng}`,
+          android: `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`,
+          default: `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`
+        });
+        await Linking.openURL(webUrl);
+      }
+    } catch (error) {
+      console.error('Error opening maps:', error);
+      Alert.alert(
+        'Error',
+        'Could not open maps. Please try again.',
+        [{ text: 'OK' }]
+      );
+    }
   };
 
   const handleRestart = () => {

@@ -138,7 +138,13 @@ const normalizePlace = (place, hostLat, hostLng, apiKey) => {
     rating: place.rating || null,
     review_count: place.user_ratings_total || 0,
     address: place.vicinity || place.formatted_address || 'Address not available',
-    distance_km: Math.round(distance * 10) / 10 // Round to 1 decimal
+    distance_km: Math.round(distance * 10) / 10, // Round to 1 decimal
+    geometry: {
+      location: {
+        lat: place.geometry.location.lat,
+        lng: place.geometry.location.lng
+      }
+    }
   };
 };
 
