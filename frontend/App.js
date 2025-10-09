@@ -279,6 +279,8 @@ function Navigation() {
   );
 }
 
+const FORCE_COLD_START_KEY = '@nightswipe_force_cold_start';
+
 export default function App() {
   const [showSplash, setShowSplash] = useState(true);
   const [isWarmStart, setIsWarmStart] = useState(false);
@@ -298,20 +300,29 @@ export default function App() {
       let warmStart = false;
 
       try {
-        const lastCloseTime = await AsyncStorage.getItem(LAST_CLOSE_KEY);
-        const now = Date.now();
-
-        console.log('🔍 [DEBUG] Last close time from storage:', lastCloseTime);
-        console.log('🔍 [DEBUG] Current time:', now);
-
-        if (lastCloseTime) {
-          const timeSinceClose = now - parseInt(lastCloseTime, 10);
-          warmStart = timeSinceClose < WARM_START_THRESHOLD;
-          setIsWarmStart(warmStart);
-          console.log(`🚀 ${warmStart ? 'Warm' : 'Cold'} start detected (${Math.round(timeSinceClose / 1000)}s since close)`);
-        } else {
-          console.log('🚀 First launch - Cold start (no previous close time)');
+        // Check if force cold start flag is set (for testing)
+        const forceColdStart = await AsyncStorage.getItem(FORCE_COLD_START_KEY);
+        if (forceColdStart === 'true') {
+          console.log('🧊 [DEV] Force cold start enabled - clearing flag');
+          await AsyncStorage.removeItem(FORCE_COLD_START_KEY);
+          warmStart = false;
           setIsWarmStart(false);
+        } else {
+          const lastCloseTime = await AsyncStorage.getItem(LAST_CLOSE_KEY);
+          const now = Date.now();
+
+          console.log('🔍 [DEBUG] Last close time from storage:', lastCloseTime);
+          console.log('🔍 [DEBUG] Current time:', now);
+
+          if (lastCloseTime) {
+            const timeSinceClose = now - parseInt(lastCloseTime, 10);
+            warmStart = timeSinceClose < WARM_START_THRESHOLD;
+            setIsWarmStart(warmStart);
+            console.log(`🚀 ${warmStart ? 'Warm' : 'Cold'} start detected (${Math.round(timeSinceClose / 1000)}s since close)`);
+          } else {
+            console.log('🚀 First launch - Cold start (no previous close time)');
+            setIsWarmStart(false);
+          }
         }
       } catch (error) {
         console.error('❌ Error checking start type:', error);

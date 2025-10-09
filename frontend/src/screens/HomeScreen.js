@@ -234,7 +234,7 @@ export default function HomeScreen({ navigation }) {
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={async () => {
-                  await AsyncStorage.removeItem('@nightswipe_last_close');
+                  await AsyncStorage.setItem('@nightswipe_force_cold_start', 'true');
                   Alert.alert('Done', 'Force-close the app and reopen for cold start');
                 }}
                 style={[styles.devButton, { backgroundColor: '#0066ff' }]}
