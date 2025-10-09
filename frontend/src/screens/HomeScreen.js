@@ -213,7 +213,7 @@ export default function HomeScreen({ navigation }) {
   // Calculate logo position (center to slightly up)
   const logoTranslateY = logoPosition.interpolate({
     inputRange: [0, 1],
-    outputRange: [0, -150], // Slide up 150px
+    outputRange: [0, -80], // Slide up 80px
   });
 
   return (
@@ -284,7 +284,7 @@ export default function HomeScreen({ navigation }) {
                   style={styles.userIcon}
                   resizeMode="contain"
                 />
-                <Text style={[styles.userStatusText, currentUser && styles.userStatusTextBlue]}>
+                <Text style={styles.userStatusText}>
                   {currentUser ? (userProfile?.display_name || 'User') : 'log in'}
                 </Text>
               </TouchableOpacity>
@@ -365,6 +365,15 @@ export default function HomeScreen({ navigation }) {
           </Animated.View>
         </View>
 
+        {/* Footer - Callsign */}
+        <Animated.View style={[styles.footer, { opacity: contentOpacity }]}>
+          <Image
+            source={require('../../assets/swipe-decide-go.png')}
+            style={styles.callsignLogo}
+            resizeMode="contain"
+          />
+        </Animated.View>
+
         {/* S-402: Invite Modal */}
         <InviteModal
           visible={inviteModalVisible}
@@ -421,8 +430,8 @@ const styles = StyleSheet.create({
     marginBottom: 80,
   },
   logoImage: {
-    width: width * 0.65,
-    height: width * 0.25,
+    width: width * 0.75,
+    height: width * 0.3,
   },
   buttonsContainer: {
     width: '100%',
@@ -461,10 +470,7 @@ const styles = StyleSheet.create({
   userStatusText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#ff4444',
-  },
-  userStatusTextBlue: {
-    color: '#4af',
+    color: '#fff',
   },
   loginForm: {
     width: '100%',
@@ -527,5 +533,13 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: {
     opacity: 0.5,
+  },
+  footer: {
+    paddingBottom: 30,
+    alignItems: 'center',
+  },
+  callsignLogo: {
+    width: width * 0.5,
+    height: 40,
   },
 });

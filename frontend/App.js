@@ -529,9 +529,9 @@ const styles = StyleSheet.create({
   },
   breathingGlow: {
     position: 'absolute',
-    width: width * 0.4,
-    height: width * 0.4,
-    borderRadius: (width * 0.4) / 2,
+    width: width * 0.37,
+    height: width * 0.37,
+    borderRadius: (width * 0.37) / 2,
     backgroundColor: 'rgba(98, 0, 238, 0.2)',
     shadowColor: '#6200ee',
     shadowOffset: { width: 0, height: 0 },
@@ -554,7 +554,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   crescentImage: {
-    width: width * 0.65,
-    height: width * 0.25,
+    width: width * 0.75,
+    height: width * 0.3,
   },
 });
