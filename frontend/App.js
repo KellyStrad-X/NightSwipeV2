@@ -1,8 +1,9 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
-import { View, ActivityIndicator, StyleSheet, Alert } from 'react-native';
+import { View, ActivityIndicator, StyleSheet, Alert, Animated, Image, Dimensions, AppState } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Linking from 'expo-linking';
 import Toast from 'react-native-toast-message';
 
@@ -24,6 +25,9 @@ import { storePendingJoinCode } from './src/utils/deepLinkStorage';
 import api from './src/services/api';
 
 const Stack = createNativeStackNavigator();
+const { width } = Dimensions.get('window');
+const LAST_CLOSE_KEY = '@nightswipe_last_close';
+const WARM_START_THRESHOLD = 5 * 60 * 1000; // 5 minutes
 
 // Deep link configuration
 const linking = {
@@ -281,6 +285,231 @@ function Navigation() {
 }
 
 export default function App() {
+  const [showSplash, setShowSplash] = useState(true);
+  const [isWarmStart, setIsWarmStart] = useState(false);
+
+  // Splash animation values
+  const fullMoonOpacity = useRef(new Animated.Value(0)).current;
+  const fullMoonScale = useRef(new Animated.Value(0.8)).current;
+  const glowOpacity = useRef(new Animated.Value(0)).current;
+  const glowScale = useRef(new Animated.Value(1)).current;
+  const fullMoonTranslateX = useRef(new Animated.Value(0)).current;
+  const crescentOpacity = useRef(new Animated.Value(0)).current;
+  const crescentTranslateX = useRef(new Animated.Value(width)).current;
+
+  // Detect cold vs warm start and run splash animation
+  useEffect(() => {
+    const checkStartType = async () => {
+      let warmStart = false;
+
+      try {
+        const lastCloseTime = await AsyncStorage.getItem(LAST_CLOSE_KEY);
+        const now = Date.now();
+
+        if (lastCloseTime) {
+          const timeSinceClose = now - parseInt(lastCloseTime, 10);
+          warmStart = timeSinceClose < WARM_START_THRESHOLD;
+          setIsWarmStart(warmStart);
+          console.log(`🚀 ${warmStart ? 'Warm' : 'Cold'} start detected (${Math.round(timeSinceClose / 1000)}s since close)`);
+        } else {
+          console.log('🚀 First launch - Cold start');
+          setIsWarmStart(false);
+        }
+      } catch (error) {
+        console.error('Error checking start type:', error);
+        setIsWarmStart(false);
+      }
+
+      // Start splash animation after detection
+      setTimeout(() => startSplashAnimation(warmStart), 100);
+    };
+
+    checkStartType();
+
+    // Track app state changes to save close time
+    const subscription = AppState.addEventListener('change', async (nextAppState) => {
+      if (nextAppState === 'background' || nextAppState === 'inactive') {
+        await AsyncStorage.setItem(LAST_CLOSE_KEY, Date.now().toString());
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, []);
+
+  const startSplashAnimation = (isWarm) => {
+    if (isWarm) {
+      // Warm start: Quick logo fade-in
+      Animated.sequence([
+        Animated.timing(crescentOpacity, {
+          toValue: 1,
+          duration: 600,
+          useNativeDriver: true,
+        }),
+        Animated.delay(800),
+      ]).start(() => {
+        setShowSplash(false);
+      });
+    } else {
+      // Cold start: Full animation sequence
+      Animated.sequence([
+        // 1. Moon fades in SLOWLY (1.2s)
+        Animated.parallel([
+          Animated.timing(fullMoonOpacity, {
+            toValue: 1,
+            duration: 1200,
+            useNativeDriver: true,
+          }),
+          Animated.timing(fullMoonScale, {
+            toValue: 1,
+            duration: 1200,
+            useNativeDriver: true,
+          }),
+        ]),
+
+        // 2. Breathing glow starts (loops during hold)
+        Animated.delay(200),
+
+        // Start breathing glow animation
+        Animated.parallel([
+          Animated.timing(glowOpacity, {
+            toValue: 1,
+            duration: 400,
+            useNativeDriver: true,
+          }),
+        ]),
+
+        // Breathing effect (2 cycles)
+        Animated.sequence([
+          // Breathe in
+          Animated.timing(glowScale, {
+            toValue: 1.15,
+            duration: 800,
+            useNativeDriver: true,
+          }),
+          // Breathe out
+          Animated.timing(glowScale, {
+            toValue: 1,
+            duration: 800,
+            useNativeDriver: true,
+          }),
+          // Breathe in again
+          Animated.timing(glowScale, {
+            toValue: 1.15,
+            duration: 800,
+            useNativeDriver: true,
+          }),
+          // Breathe out
+          Animated.timing(glowScale, {
+            toValue: 1,
+            duration: 800,
+            useNativeDriver: true,
+          }),
+        ]),
+
+        // 3. Moon swipes LEFT + Crescent slides in from RIGHT (simultaneous)
+        Animated.parallel([
+          // Moon swipes left
+          Animated.timing(fullMoonTranslateX, {
+            toValue: -width,
+            duration: 800,
+            useNativeDriver: true,
+          }),
+          Animated.timing(fullMoonOpacity, {
+            toValue: 0,
+            duration: 800,
+            useNativeDriver: true,
+          }),
+          // Glow fades out with moon
+          Animated.timing(glowOpacity, {
+            toValue: 0,
+            duration: 800,
+            useNativeDriver: true,
+          }),
+          // Crescent slides in from right
+          Animated.timing(crescentTranslateX, {
+            toValue: 0,
+            duration: 800,
+            useNativeDriver: true,
+          }),
+          Animated.timing(crescentOpacity, {
+            toValue: 1,
+            duration: 800,
+            useNativeDriver: true,
+          }),
+        ]),
+
+        // 4. Hold for a moment
+        Animated.delay(500),
+      ]).start(() => {
+        setShowSplash(false);
+      });
+    }
+  };
+
+  // Show splash screen
+  if (showSplash) {
+    return (
+      <View style={styles.splashContainer}>
+        <StatusBar style="light" />
+
+        {/* Full Moon (cold start only - swipes left) */}
+        {!isWarmStart && (
+          <>
+            {/* Breathing glow behind moon */}
+            <Animated.View
+              style={[
+                styles.breathingGlow,
+                {
+                  opacity: glowOpacity,
+                  transform: [{ scale: glowScale }],
+                },
+              ]}
+            />
+
+            {/* Full moon image */}
+            <Animated.View
+              style={[
+                styles.fullMoonContainer,
+                {
+                  opacity: fullMoonOpacity,
+                  transform: [
+                    { translateX: fullMoonTranslateX },
+                    { scale: fullMoonScale },
+                  ],
+                },
+              ]}
+            >
+              <Image
+                source={require('./assets/logo-full-moon.png')}
+                style={styles.fullMoonImage}
+                resizeMode="contain"
+              />
+            </Animated.View>
+          </>
+        )}
+
+        {/* Crescent Logo (slides in from right) */}
+        <Animated.View
+          style={[
+            styles.crescentContainer,
+            {
+              opacity: crescentOpacity,
+              transform: [{ translateX: crescentTranslateX }],
+            },
+          ]}
+        >
+          <Image
+            source={require('./assets/logo-crescent.png')}
+            style={styles.crescentImage}
+            resizeMode="contain"
+          />
+        </Animated.View>
+      </View>
+    );
+  }
+
   return (
     <AuthProvider>
       <LocationProvider>
@@ -296,5 +525,41 @@ const styles = StyleSheet.create({
     backgroundColor: '#0a0a0a',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  splashContainer: {
+    flex: 1,
+    backgroundColor: '#0a0a0a',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  breathingGlow: {
+    position: 'absolute',
+    width: width * 0.6,
+    height: width * 0.6,
+    borderRadius: (width * 0.6) / 2,
+    backgroundColor: 'rgba(98, 0, 238, 0.2)',
+    shadowColor: '#6200ee',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 60,
+    elevation: 20,
+  },
+  fullMoonContainer: {
+    position: 'absolute',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  fullMoonImage: {
+    width: width * 0.35,
+    height: width * 0.35,
+  },
+  crescentContainer: {
+    position: 'absolute',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  crescentImage: {
+    width: width * 0.65,
+    height: width * 0.25,
   },
 });
